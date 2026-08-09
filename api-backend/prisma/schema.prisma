@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  PAUSED_FOR_HITL
+  COMPLETED
+  FAILED
+}
+
+model Job {
+  id          String    @id @default(uuid())
+  prompt      String
+  status      JobStatus @default(PENDING)
+  resultData  Json?     @map("result_data")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  auditLogs   AuditLog[]
+
+  @@map("jobs")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  jobId         String   @map("job_id")
+  actionType    String   @map("action_type")
+  screenshotUrl String?  @map("screenshot_url")
+  description   String
+  timestamp     DateTime @default(now())
+
+  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@map("audit_logs")
+}
