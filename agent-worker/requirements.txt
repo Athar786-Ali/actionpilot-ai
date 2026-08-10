@@ -1,0 +1,24 @@
+# ──────────────────────────────────────────────
+# ActionPilot AI — Agent Worker Dependencies
+# ──────────────────────────────────────────────
+
+# Core Agent Framework
+browser-use>=0.2.0
+playwright>=1.49.0
+langchain-google-genai>=2.1.0
+langchain-core>=0.3.0
+
+# Queue & Messaging
+bullmq>=1.5.0
+redis>=5.2.0
+
+# HTTP & Validation
+requests>=2.32.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Logging
+structlog>=24.4.0
