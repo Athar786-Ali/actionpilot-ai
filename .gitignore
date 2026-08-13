@@ -1,0 +1,45 @@
+# ──────────────────────────────────────────────
+# ActionPilot AI — Root .gitignore
+# ──────────────────────────────────────────────
+
+# Node.js
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Environment files (contain secrets)
+.env
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Prisma
+prisma/migrations/
+
+# Playwright
+playwright-browsers/
+
+# Build artifacts
+build/
+*.egg
