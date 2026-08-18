@@ -6,12 +6,15 @@ custom action logging callbacks, and a Human-in-the-Loop (HITL) tool
 for OTP/CAPTCHA scenarios.
 
 Architecture:
-  1. A custom `Controller` is created with an `ask_human_for_otp` tool.
-  2. The agent is initialized with the user's prompt and Gemini 2.0 Flash.
-  3. A `register_action_callback` hook sends every browser action back
-     to the Node.js API via webhook.
+  1. A custom `Tools` (controller) is created with an `ask_human_for_otp` action.
+  2. The agent is initialized with the user's prompt and Gemini 2.0 Flash
+     via browser-use's built-in ChatGoogle LLM wrapper.
+  3. A `register_new_step_callback` hook sends every browser action back
+     to the Node.js API via webhook after each agent step.
   4. When the LLM encounters OTP/CAPTCHA, it invokes `ask_human_for_otp`,
      which pauses the agent, notifies the API, and waits for Redis Pub/Sub.
+
+Compatible with browser-use >= 0.13.x
 """
 
 from __future__ import annotations
@@ -19,11 +22,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import traceback
-from typing import Any, Optional
+from typing import Any
 
-from browser_use import Agent, Browser, BrowserConfig, Controller
-from langchain_google_genai import ChatGoogleGenerativeAI
-from pydantic import BaseModel
+from browser_use.agent.service import Agent
+from browser_use.agent.views import AgentOutput
+from browser_use.browser.profile import BrowserProfile
+from browser_use.browser.session import BrowserSession
+from browser_use.browser.views import BrowserStateSummary
+from browser_use.llm.google.chat import ChatGoogle
+from browser_use.tools.service import Tools
 
 from .config import settings
 from .hitl_handler import HITLTimeoutError, wait_for_human_input
@@ -32,14 +39,6 @@ from .webhook_client import WebhookClient
 logger = logging.getLogger("actionpilot.agent")
 
 
-# ── Pydantic model for the HITL tool input ───────────────────────
-class AskHumanInput(BaseModel):
-    """Input schema for the ask_human_for_otp tool."""
-
-    reason: str = "OTP or verification code required"
-
-
-# ── Agent Runner ─────────────────────────────────────────────────
 async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
     """
     Execute a browser-use agent session for the given job.
@@ -56,7 +55,7 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
         Exception: Any unhandled error during agent execution.
     """
     webhook = WebhookClient()
-    controller = Controller()
+    controller = Tools()
 
     # ── Register the HITL tool on the controller ─────────────────
     @controller.action(
@@ -69,17 +68,20 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
             "the appropriate field."
         ),
     )
-    async def ask_human_for_otp(reason: str = "OTP or verification code required") -> str:
+    async def ask_human_for_otp(
+        reason: str = "OTP or verification code required",
+    ) -> str:
         """Pause the agent and wait for human-provided OTP via Redis Pub/Sub."""
         logger.info("🛑 HITL tool invoked for job %s: %s", job_id, reason)
 
         # 1. Notify the API that we need human input
         webhook.send_status_paused_for_hitl(job_id, reason)
 
-        # 2. Wait for the OTP on Redis Pub/Sub (blocking call in a thread)
+        # 2. Wait for the OTP on Redis Pub/Sub (blocking call offloaded to thread)
         try:
-            otp = await asyncio.get_event_loop().run_in_executor(
-                None,  # default executor (ThreadPoolExecutor)
+            loop = asyncio.get_running_loop()
+            otp = await loop.run_in_executor(
+                None,  # default ThreadPoolExecutor
                 wait_for_human_input,
                 job_id,
             )
@@ -102,76 +104,85 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
             )
             raise
 
-    # ── Initialize the LLM ───────────────────────────────────────
-    llm = ChatGoogleGenerativeAI(
+    # ── Step callback for real-time webhook logging ──────────────
+    def _on_step(
+        browser_state: BrowserStateSummary,
+        agent_output: AgentOutput,
+        step_number: int,
+    ) -> None:
+        """Called by browser-use after every agent step with action details."""
+        try:
+            # Log each action from the agent's output
+            if agent_output.action:
+                for action_model in agent_output.action:
+                    action_dict = action_model.model_dump(exclude_none=True)
+
+                    # Determine action type from the action dict keys
+                    action_type = "AGENT_ACTION"
+                    description = str(action_dict)
+
+                    if isinstance(action_dict, dict):
+                        action_keys = [
+                            k
+                            for k in action_dict.keys()
+                            if k not in ("interacted_element",)
+                            and action_dict[k] is not None
+                        ]
+                        if action_keys:
+                            action_type = action_keys[0].upper()
+                            action_value = action_dict[action_keys[0]]
+                            description = str(action_value)
+
+                    webhook.send_agent_action(
+                        job_id=job_id,
+                        action_type=action_type,
+                        description=(
+                            f"[Step {step_number}] {description[:500]}"
+                        ),
+                    )
+
+            # Also log the agent's thinking/goal if present
+            if agent_output.next_goal:
+                webhook.send_agent_action(
+                    job_id=job_id,
+                    action_type="AGENT_GOAL",
+                    description=(
+                        f"[Step {step_number}] Goal: {agent_output.next_goal[:300]}"
+                    ),
+                )
+
+        except Exception as log_err:
+            # Never let logging failures crash the agent
+            logger.warning("⚠️ Failed to log step via webhook: %s", log_err)
+
+    # ── Initialize the LLM (browser-use's built-in ChatGoogle) ───
+    llm = ChatGoogle(
         model="gemini-2.0-flash",
-        google_api_key=settings.gemini_api_key,
+        api_key=settings.gemini_api_key,
         temperature=0.1,
-        max_tokens=8192,
+        max_output_tokens=8192,
     )
 
-    # ── Configure the Browser ────────────────────────────────────
-    browser_config = BrowserConfig(
+    # ── Configure browser profile ────────────────────────────────
+    browser_profile = BrowserProfile(
         headless=settings.browser_headless,
     )
-    browser = Browser(config=browser_config)
+
+    # ── Create browser session ───────────────────────────────────
+    browser_session = BrowserSession(
+        browser_profile=browser_profile,
+    )
 
     # ── Build the Agent ──────────────────────────────────────────
     agent = Agent(
         task=prompt,
         llm=llm,
-        browser=browser,
+        browser_session=browser_session,
         controller=controller,
+        register_new_step_callback=_on_step,
         max_actions_per_step=5,
         use_vision=True,
     )
-
-    # ── Register action callback for real-time logging ───────────
-    # browser-use calls this after every action step with action details
-    original_step = agent.step
-
-    async def _instrumented_step(*args: Any, **kwargs: Any) -> Any:
-        """Wraps Agent.step() to log each action via webhook."""
-        result = await original_step(*args, **kwargs)
-
-        # Extract action details from the step result if available
-        try:
-            if result and hasattr(result, "model_output") and result.model_output:
-                for action in result.model_output:
-                    action_dict = (
-                        action.model_dump()
-                        if hasattr(action, "model_dump")
-                        else str(action)
-                    )
-                    # Determine action type from the action object
-                    action_type = "AGENT_ACTION"
-                    description = str(action_dict)
-
-                    if isinstance(action_dict, dict):
-                        # Extract a cleaner action type from the action keys
-                        action_keys = [
-                            k for k in action_dict.keys() if action_dict[k] is not None
-                        ]
-                        if action_keys:
-                            action_type = action_keys[0].upper()
-                            action_value = action_dict[action_keys[0]]
-                            if isinstance(action_value, dict):
-                                description = str(action_value)
-                            else:
-                                description = str(action_value)
-
-                    webhook.send_agent_action(
-                        job_id=job_id,
-                        action_type=action_type,
-                        description=description[:500],  # Truncate long descriptions
-                    )
-        except Exception as log_err:
-            # Never let logging failures crash the agent
-            logger.warning("⚠️ Failed to log action via webhook: %s", log_err)
-
-        return result
-
-    agent.step = _instrumented_step  # type: ignore[assignment]
 
     # ── Execute the Agent ────────────────────────────────────────
     logger.info("▶️  Starting agent for job %s with prompt: %s", job_id, prompt[:100])
@@ -184,17 +195,21 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
     try:
         result = await agent.run()
 
-        # ── Extract result data ──────────────────────────────────
+        # ── Extract result data from AgentHistoryList ────────────
         result_data: dict[str, Any] = {
-            "final_result": result.final_result() if hasattr(result, "final_result") else str(result),
-            "is_done": result.is_done() if hasattr(result, "is_done") else True,
+            "final_result": result.final_result(),
+            "is_done": result.is_done(),
+            "total_actions": result.number_of_steps(),
         }
 
-        # Collect action history if available
-        if hasattr(result, "action_results"):
-            result_data["total_actions"] = len(result.action_results())
-        if hasattr(result, "errors") and result.errors():
+        if result.errors():
             result_data["errors"] = [str(e) for e in result.errors()]
+
+        if result.is_successful() is not None:
+            result_data["is_successful"] = result.is_successful()
+
+        if result.extracted_content():
+            result_data["extracted_content"] = result.extracted_content()
 
         logger.info(
             "✅ Agent completed job %s successfully. Result: %s",
@@ -214,9 +229,9 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
         raise
 
     finally:
-        # Always close the browser to free resources
+        # Always close the browser session to free resources
         try:
-            await browser.close()
-            logger.info("🧹 Browser closed for job %s", job_id)
+            await browser_session.close()
+            logger.info("🧹 Browser session closed for job %s", job_id)
         except Exception as close_err:
-            logger.warning("⚠️ Error closing browser: %s", close_err)
+            logger.warning("⚠️ Error closing browser session: %s", close_err)
