@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #09090b;
+  --color-bg-secondary: #18181b;
+  --color-bg-card: oklch(0.16 0.005 285.75 / 0.7);
+  --color-border-subtle: oklch(0.37 0 0 / 0.5);
+  --color-accent-primary: #6366f1;
+  --color-accent-glow: oklch(0.55 0.25 270 / 0.4);
+  --color-accent-cyan: #22d3ee;
+  --color-accent-cyan-glow: oklch(0.75 0.14 195 / 0.3);
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-status-pending: #eab308;
+  --color-status-running: #3b82f6;
+  --color-status-paused: #f97316;
+  --color-status-completed: #22c55e;
+  --color-status-failed: #ef4444;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: oklch(0.37 0 0 / 0.5); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: oklch(0.37 0 0 / 0.8); }
+
+/* Keyframes */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes scan-line {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+@keyframes terminal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Utility classes */
+.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+.animate-shimmer { background-size: 200% 100%; animation: shimmer 2s linear infinite; }
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-terminal-blink { animation: terminal-blink 1s step-end infinite; }
+
+.glass {
+  background: oklch(0.16 0.005 285.75 / 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid oklch(0.37 0 0 / 0.3);
+}
+.glass-strong {
+  background: oklch(0.16 0.005 285.75 / 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid oklch(0.37 0 0 / 0.4);
+}
