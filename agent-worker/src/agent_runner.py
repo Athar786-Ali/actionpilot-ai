@@ -66,7 +66,7 @@ class GeminiKeyPool:
         api_keys: list[str],
         model: str = "gemini-2.0-flash",
         temperature: float = 0.1,
-        max_completion_tokens: int = 8192,
+        max_output_tokens: int = 8192,
     ) -> None:
         if not api_keys:
             raise ValueError("GeminiKeyPool requires at least one API key")
@@ -75,7 +75,7 @@ class GeminiKeyPool:
         self._keys = api_keys
         self._current_idx = 0
         self._temperature = temperature
-        self._max_completion_tokens = max_completion_tokens
+        self._max_output_tokens = max_output_tokens
 
         # Pre-build a ChatGoogle instance per key
         self._clients: list[ChatGoogle] = [
@@ -83,7 +83,7 @@ class GeminiKeyPool:
                 model=model,
                 api_key=key,
                 temperature=temperature,
-                max_completion_tokens=max_completion_tokens,
+                max_output_tokens=max_output_tokens,
                 # ChatGoogle's own internal retry (5 attempts per key)
                 max_retries=5,
             )
@@ -315,7 +315,7 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
         api_keys=settings.gemini_api_keys,
         model="gemini-2.0-flash",
         temperature=0.1,
-        max_completion_tokens=8192,
+        max_output_tokens=8192,
     )
 
     # ── Configure browser profile ────────────────────────────────
