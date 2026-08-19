@@ -29,8 +29,8 @@ from browser_use.agent.views import AgentOutput
 from browser_use.browser.profile import BrowserProfile
 from browser_use.browser.session import BrowserSession
 from browser_use.browser.views import BrowserStateSummary
-from browser_use.llm.google.chat import ChatGoogle
 from browser_use.tools.service import Tools
+from langchain_openai import ChatOpenAI
 
 from .config import settings
 from .hitl_handler import HITLTimeoutError, wait_for_human_input
@@ -155,12 +155,13 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
             # Never let logging failures crash the agent
             logger.warning("⚠️ Failed to log step via webhook: %s", log_err)
 
-    # ── Initialize the LLM (browser-use's built-in ChatGoogle) ───
-    llm = ChatGoogle(
-        model="gemini-3.6-flash",
-        api_key=settings.gemini_api_key,
+    # ── Initialize the LLM (Nvidia NIM — Llama 3.2 Vision) ────────
+    llm = ChatOpenAI(
+        base_url="https://integrate.api.nvidia.com/v1",
+        model="meta/llama-3.2-90b-vision-instruct",
+        api_key=settings.nvidia_api_key,
         temperature=0.1,
-        max_output_tokens=8192,
+        max_tokens=8192,
     )
 
     # ── Configure browser profile ────────────────────────────────

@@ -5,7 +5,7 @@
 # Core Agent Framework
 browser-use>=0.2.0
 playwright>=1.49.0
-langchain-google-genai>=2.1.0
+langchain-openai>=0.3.0
 langchain-core>=0.3.0
 
 # Queue & Messaging
