@@ -1,17 +1,21 @@
 """
 ActionPilot AI — Agent Runner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Initializes and executes the browser-use Agent with Groq (Llama 3.3 70B),
-custom action logging callbacks, and a Human-in-the-Loop (HITL) tool
-for OTP/CAPTCHA scenarios.
+Initializes and executes the browser-use Agent with Nvidia NIM
+(Llama 3.2 90B Vision), custom action logging callbacks, and a
+Human-in-the-Loop (HITL) tool for OTP/CAPTCHA scenarios.
 
 Architecture:
   1. A custom `Tools` (controller) is created with an `ask_human_for_otp` action.
-  2. The agent is initialized with the user's prompt and Llama 3.3 70B via Groq
-     (OpenAI-compatible API with proper tool-calling support).
-  3. A `register_new_step_callback` hook sends every browser action back
+  2. The agent is initialized using browser-use's built-in ChatOpenAILike wrapper
+     pointing to Nvidia NIM's OpenAI-compatible endpoint.
+  3. Key compatibility flags are enabled:
+     - remove_min_items_from_schema=True  → fixes "items" validation error
+     - dont_force_structured_output=True  → doesn't force response_format
+     - add_schema_to_system_prompt=True   → puts JSON schema in prompt
+  4. A `register_new_step_callback` hook sends every browser action back
      to the Node.js API via webhook after each agent step.
-  4. When the LLM encounters OTP/CAPTCHA, it invokes `ask_human_for_otp`,
+  5. When the LLM encounters OTP/CAPTCHA, it invokes `ask_human_for_otp`,
      which pauses the agent, notifies the API, and waits for Redis Pub/Sub.
 
 Compatible with browser-use >= 0.13.x
@@ -29,24 +33,14 @@ from browser_use.agent.views import AgentOutput
 from browser_use.browser.profile import BrowserProfile
 from browser_use.browser.session import BrowserSession
 from browser_use.browser.views import BrowserStateSummary
+from browser_use.llm.openai.like import ChatOpenAILike
 from browser_use.tools.service import Tools
-from langchain_openai import ChatOpenAI
 
 from .config import settings
 from .hitl_handler import HITLTimeoutError, wait_for_human_input
 from .webhook_client import WebhookClient
 
 logger = logging.getLogger("actionpilot.agent")
-
-
-# ── Custom LLM wrapper (browser-use expects a .provider attribute) ─
-class GroqChatOpenAI(ChatOpenAI):
-    """ChatOpenAI subclass that adds the `provider` property
-    required by browser-use's internal telemetry/routing."""
-
-    @property
-    def provider(self) -> str:
-        return "openai"
 
 
 async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
@@ -165,15 +159,27 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
             # Never let logging failures crash the agent
             logger.warning("⚠️ Failed to log step via webhook: %s", log_err)
 
-    # ── Initialize the LLM (Groq — Llama 3.3 70B) ───────────────
-    # Groq provides OpenAI-compatible tool calling that works
-    # reliably with browser-use's structured output requirements.
-    llm = GroqChatOpenAI(
-        base_url="https://api.groq.com/openai/v1",
-        model="llama-3.3-70b-versatile",
-        api_key=settings.groq_api_key,
+    # ── Initialize the LLM (Nvidia NIM — Llama 3.2 Vision) ───────
+    # Uses browser-use's built-in ChatOpenAILike which properly implements
+    # the BaseChatModel protocol (ainvoke → ChatInvokeCompletion).
+    #
+    # Key compatibility flags for non-OpenAI providers:
+    #   - remove_min_items_from_schema: Strips 'minItems' from JSON schema
+    #     → This directly fixes the "items" validation error
+    #   - dont_force_structured_output: Doesn't use response_format param
+    #     → NIM doesn't support OpenAI's strict structured output mode
+    #   - add_schema_to_system_prompt: Puts the expected JSON format in
+    #     the system message so the model knows what to produce
+    llm = ChatOpenAILike(
+        model="meta/llama-3.2-90b-vision-instruct",
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key=settings.nvidia_api_key,
         temperature=0.1,
-        max_tokens=4096,
+        max_completion_tokens=4096,
+        # ── Non-OpenAI compatibility flags ───────────────────────
+        remove_min_items_from_schema=True,
+        dont_force_structured_output=True,
+        add_schema_to_system_prompt=True,
     )
 
     # ── Configure browser profile ────────────────────────────────
@@ -187,11 +193,11 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
     )
 
     # ── Build the Agent ──────────────────────────────────────────
-    # Key tuning for non-OpenAI models:
-    #   - max_actions_per_step=3   → simpler output, fewer tool calls per step
-    #   - use_vision=False         → Groq Llama 3.3 is text-only, skip screenshots
-    #   - use_thinking=True        → let the model reason step-by-step
-    #   - max_failures=10          → more tolerance for occasional parse errors
+    # Tuned for Llama 3.2 on Nvidia NIM:
+    #   - max_actions_per_step=3  → simpler output per step
+    #   - use_vision=True         → leverage Llama's vision capability
+    #   - use_thinking=False      → simpler output format for Llama
+    #   - max_failures=10         → more tolerance for occasional parse errors
     agent = Agent(
         task=prompt,
         llm=llm,
@@ -199,8 +205,8 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
         controller=controller,
         register_new_step_callback=_on_step,
         max_actions_per_step=3,
-        use_vision=False,
-        use_thinking=True,
+        use_vision=True,
+        use_thinking=False,
         max_failures=10,
     )
 

@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_password: str = Field(default="", alias="REDIS_PASSWORD")
 
-    # ── Groq (Free Llama 3.3 70B with tool-calling support) ─────
-    groq_api_key: str = Field(..., alias="GROQ_API_KEY")
+    # ── Nvidia NIM (Llama 3.2 Vision) ──────────────────────────
+    nvidia_api_key: str = Field(..., alias="NVIDIA_API_KEY")
 
     # ── Webhook (Node.js API Backend) ────────────────────────────
     webhook_url: str = Field(
@@ -55,13 +55,13 @@ class Settings(BaseSettings):
     # ── Browser ──────────────────────────────────────────────────
     browser_headless: bool = Field(default=True, alias="BROWSER_HEADLESS")
 
-    @field_validator("groq_api_key")
+    @field_validator("nvidia_api_key")
     @classmethod
-    def _validate_groq_key(cls, v: str) -> str:
+    def _validate_nvidia_key(cls, v: str) -> str:
         if not v or v.startswith("your-"):
             raise ValueError(
-                "GROQ_API_KEY must be set to a valid API key. "
-                "Get a free one at https://console.groq.com/keys"
+                "NVIDIA_API_KEY must be set to a valid API key. "
+                "Get one at https://build.nvidia.com/"
             )
         return v
 
