@@ -157,7 +157,7 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
 
     # ── Initialize the LLM (browser-use's built-in ChatGoogle) ───
     llm = ChatGoogle(
-        model="gemini-2.0-flash",
+        model="gemini-3.6-flash",
         api_key=settings.gemini_api_key,
         temperature=0.1,
         max_output_tokens=8192,
