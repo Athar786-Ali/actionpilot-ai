@@ -2,6 +2,7 @@
 ActionPilot AI — Agent Worker Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Loads and validates all environment variables using Pydantic Settings.
+Supports up to 5 Gemini API keys for multi-key failover rotation.
 """
 
 from __future__ import annotations
@@ -26,8 +27,12 @@ class Settings(BaseSettings):
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_password: str = Field(default="", alias="REDIS_PASSWORD")
 
-    # ── Nvidia NIM (Llama 3.2 Vision) ──────────────────────────
-    nvidia_api_key: str = Field(..., alias="NVIDIA_API_KEY")
+    # ── Gemini API Keys (up to 5 for multi-key rotation) ────────
+    gemini_api_key_1: str = Field(default="", alias="GEMINI_API_KEY_1")
+    gemini_api_key_2: str = Field(default="", alias="GEMINI_API_KEY_2")
+    gemini_api_key_3: str = Field(default="", alias="GEMINI_API_KEY_3")
+    gemini_api_key_4: str = Field(default="", alias="GEMINI_API_KEY_4")
+    gemini_api_key_5: str = Field(default="", alias="GEMINI_API_KEY_5")
 
     # ── Webhook (Node.js API Backend) ────────────────────────────
     webhook_url: str = Field(
@@ -55,15 +60,30 @@ class Settings(BaseSettings):
     # ── Browser ──────────────────────────────────────────────────
     browser_headless: bool = Field(default=True, alias="BROWSER_HEADLESS")
 
-    @field_validator("nvidia_api_key")
+    @property
+    def gemini_api_keys(self) -> list[str]:
+        """Return a list of all non-empty Gemini API keys."""
+        all_keys = [
+            self.gemini_api_key_1,
+            self.gemini_api_key_2,
+            self.gemini_api_key_3,
+            self.gemini_api_key_4,
+            self.gemini_api_key_5,
+        ]
+        return [k for k in all_keys if k and not k.startswith("your-")]
+
+    @field_validator(
+        "gemini_api_key_1",
+        "gemini_api_key_2",
+        "gemini_api_key_3",
+        "gemini_api_key_4",
+        "gemini_api_key_5",
+        mode="before",
+    )
     @classmethod
-    def _validate_nvidia_key(cls, v: str) -> str:
-        if not v or v.startswith("your-"):
-            raise ValueError(
-                "NVIDIA_API_KEY must be set to a valid API key. "
-                "Get one at https://build.nvidia.com/"
-            )
-        return v
+    def _normalize_empty_keys(cls, v: str | None) -> str:
+        """Allow empty keys (only key_1 needs to be set)."""
+        return v or ""
 
     @property
     def redis_url(self) -> str:
@@ -81,6 +101,13 @@ class Settings(BaseSettings):
 # ── Singleton ────────────────────────────────────────────────────
 settings = Settings()  # type: ignore[call-arg]
 
+# ── Validate at least one key is present ─────────────────────────
+if not settings.gemini_api_keys:
+    raise ValueError(
+        "At least GEMINI_API_KEY_1 must be set to a valid API key. "
+        "Get one at https://aistudio.google.com/apikey"
+    )
+
 # ── Logging Setup ────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -94,3 +121,4 @@ logger.info("   Redis: %s:%d", settings.redis_host, settings.redis_port)
 logger.info("   Webhook: %s", settings.webhook_url)
 logger.info("   Queue: %s", settings.bullmq_queue_name)
 logger.info("   Headless: %s", settings.browser_headless)
+logger.info("   Gemini API keys loaded: %d", len(settings.gemini_api_keys))

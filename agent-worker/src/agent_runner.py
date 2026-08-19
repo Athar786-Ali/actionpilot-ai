@@ -1,22 +1,17 @@
 """
 ActionPilot AI — Agent Runner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Initializes and executes the browser-use Agent with Nvidia NIM
-(Llama 3.2 90B Vision), custom action logging callbacks, and a
-Human-in-the-Loop (HITL) tool for OTP/CAPTCHA scenarios.
+Initializes and executes the browser-use Agent with Google Gemini 2.0 Flash
+and a **multi-key failover rotation** system to handle rate limits seamlessly.
 
 Architecture:
-  1. A custom `Tools` (controller) is created with an `ask_human_for_otp` action.
-  2. The agent is initialized using browser-use's built-in ChatOpenAILike wrapper
-     pointing to Nvidia NIM's OpenAI-compatible endpoint.
-  3. Key compatibility flags are enabled:
-     - remove_min_items_from_schema=True  → fixes "items" validation error
-     - dont_force_structured_output=True  → doesn't force response_format
-     - add_schema_to_system_prompt=True   → puts JSON schema in prompt
-  4. A `register_new_step_callback` hook sends every browser action back
-     to the Node.js API via webhook after each agent step.
-  5. When the LLM encounters OTP/CAPTCHA, it invokes `ask_human_for_otp`,
-     which pauses the agent, notifies the API, and waits for Redis Pub/Sub.
+  1. GeminiKeyPool loads up to 5 Gemini API keys and creates a ChatGoogle
+     instance for each.  When a 429 / rate-limit error is raised (after
+     ChatGoogle's own internal retries are exhausted), the pool catches it,
+     logs a warning, rotates to the next key, and transparently retries.
+  2. A custom `Tools` controller exposes an `ask_human_for_otp` HITL tool.
+  3. A `register_new_step_callback` hook streams every action to the
+     Node.js API via webhook.
 
 Compatible with browser-use >= 0.13.x
 """
@@ -26,15 +21,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import traceback
-from typing import Any
+from typing import Any, TypeVar, overload
 
 from browser_use.agent.service import Agent
 from browser_use.agent.views import AgentOutput
 from browser_use.browser.profile import BrowserProfile
 from browser_use.browser.session import BrowserSession
 from browser_use.browser.views import BrowserStateSummary
-from browser_use.llm.openai.like import ChatOpenAILike
+from browser_use.llm.exceptions import ModelProviderError, ModelRateLimitError
+from browser_use.llm.google.chat import ChatGoogle
+from browser_use.llm.messages import BaseMessage
 from browser_use.tools.service import Tools
+from browser_use.llm.views import ChatInvokeCompletion
 
 from .config import settings
 from .hitl_handler import HITLTimeoutError, wait_for_human_input
@@ -42,6 +40,159 @@ from .webhook_client import WebhookClient
 
 logger = logging.getLogger("actionpilot.agent")
 
+T = TypeVar("T")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# GEMINI MULTI-KEY FAILOVER POOL
+# ═══════════════════════════════════════════════════════════════════
+
+class GeminiKeyPool:
+    """
+    A pool of Gemini API keys that automatically rotates on rate-limit
+    errors.  Implements the browser-use ``BaseChatModel`` protocol so it
+    can be passed directly to ``Agent(llm=...)``.
+
+    Flow on each ``ainvoke`` call:
+      1. Try the current ChatGoogle client.
+      2. ChatGoogle internally retries 429s up to ``max_retries`` times.
+      3. If it *still* fails with a rate-limit status, we catch the error,
+         rotate to the next key, and retry — up to ``len(keys)`` times.
+      4. If ALL keys are exhausted, re-raise the last error.
+    """
+
+    def __init__(
+        self,
+        api_keys: list[str],
+        model: str = "gemini-2.0-flash",
+        temperature: float = 0.1,
+        max_completion_tokens: int = 8192,
+    ) -> None:
+        if not api_keys:
+            raise ValueError("GeminiKeyPool requires at least one API key")
+
+        self.model: str = model
+        self._keys = api_keys
+        self._current_idx = 0
+        self._temperature = temperature
+        self._max_completion_tokens = max_completion_tokens
+
+        # Pre-build a ChatGoogle instance per key
+        self._clients: list[ChatGoogle] = [
+            ChatGoogle(
+                model=model,
+                api_key=key,
+                temperature=temperature,
+                max_completion_tokens=max_completion_tokens,
+                # ChatGoogle's own internal retry (5 attempts per key)
+                max_retries=5,
+            )
+            for key in api_keys
+        ]
+
+        logger.info(
+            "🔑 GeminiKeyPool initialised with %d key(s), model=%s",
+            len(api_keys),
+            model,
+        )
+
+    # ── BaseChatModel protocol attributes ────────────────────────
+    @property
+    def provider(self) -> str:
+        return "google"
+
+    @property
+    def name(self) -> str:
+        return f"gemini-key-pool-{len(self._keys)}x"
+
+    @property
+    def model_name(self) -> str:
+        return self.model
+
+    # ── Key rotation helpers ─────────────────────────────────────
+    @property
+    def _current_key_label(self) -> str:
+        return f"Key {self._current_idx + 1}/{len(self._keys)}"
+
+    def _rotate(self) -> None:
+        """Advance to the next API key in the pool."""
+        prev = self._current_idx + 1
+        self._current_idx = (self._current_idx + 1) % len(self._keys)
+        logger.warning(
+            "🔄 Rate limit hit on Key %d — switching to Key %d",
+            prev,
+            self._current_idx + 1,
+        )
+
+    @staticmethod
+    def _is_rate_limit(err: Exception) -> bool:
+        """Check whether an exception is a rate-limit / quota error."""
+        if isinstance(err, ModelRateLimitError):
+            return True
+        if isinstance(err, ModelProviderError) and err.status_code == 429:
+            return True
+        # Catch google-genai's own ClientError / ResourceExhausted
+        err_str = str(err).lower()
+        return any(
+            kw in err_str
+            for kw in ("429", "resource exhausted", "rate limit", "quota")
+        )
+
+    # ── Core ainvoke with failover ───────────────────────────────
+    @overload
+    async def ainvoke(
+        self,
+        messages: list[BaseMessage],
+        output_format: None = None,
+        **kwargs: Any,
+    ) -> ChatInvokeCompletion[str]: ...
+
+    @overload
+    async def ainvoke(
+        self,
+        messages: list[BaseMessage],
+        output_format: type[T] = ...,
+        **kwargs: Any,
+    ) -> ChatInvokeCompletion[T]: ...
+
+    async def ainvoke(
+        self,
+        messages: list[BaseMessage],
+        output_format: type[T] | None = None,
+        **kwargs: Any,
+    ) -> ChatInvokeCompletion[T] | ChatInvokeCompletion[str]:
+        """
+        Call Gemini with automatic key rotation on rate-limit errors.
+
+        Each key gets ChatGoogle's full internal retry budget (5 retries
+        with exponential backoff).  Only when ALL retries on a key fail
+        with 429 do we rotate to the next key.
+        """
+        last_error: Exception | None = None
+        attempts = len(self._clients)
+
+        for attempt in range(attempts):
+            client = self._clients[self._current_idx]
+            try:
+                return await client.ainvoke(messages, output_format, **kwargs)
+
+            except Exception as err:
+                if self._is_rate_limit(err) and attempt < attempts - 1:
+                    last_error = err
+                    self._rotate()
+                    # Brief cooldown before hitting the next key
+                    await asyncio.sleep(1.0)
+                    continue
+                # Not a rate limit OR all keys exhausted → propagate
+                raise
+
+        # Should never reach here, but just in case
+        raise last_error or RuntimeError("GeminiKeyPool: all keys exhausted")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# AGENT RUNNER
+# ═══════════════════════════════════════════════════════════════════
 
 async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
     """
@@ -159,27 +310,12 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
             # Never let logging failures crash the agent
             logger.warning("⚠️ Failed to log step via webhook: %s", log_err)
 
-    # ── Initialize the LLM (Nvidia NIM — Llama 3.2 Vision) ───────
-    # Uses browser-use's built-in ChatOpenAILike which properly implements
-    # the BaseChatModel protocol (ainvoke → ChatInvokeCompletion).
-    #
-    # Key compatibility flags for non-OpenAI providers:
-    #   - remove_min_items_from_schema: Strips 'minItems' from JSON schema
-    #     → This directly fixes the "items" validation error
-    #   - dont_force_structured_output: Doesn't use response_format param
-    #     → NIM doesn't support OpenAI's strict structured output mode
-    #   - add_schema_to_system_prompt: Puts the expected JSON format in
-    #     the system message so the model knows what to produce
-    llm = ChatOpenAILike(
-        model="meta/llama-3.2-90b-vision-instruct",
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=settings.nvidia_api_key,
+    # ── Initialize the LLM (Gemini 2.0 Flash — Multi-Key Pool) ──
+    llm = GeminiKeyPool(
+        api_keys=settings.gemini_api_keys,
+        model="gemini-2.0-flash",
         temperature=0.1,
-        max_completion_tokens=4096,
-        # ── Non-OpenAI compatibility flags ───────────────────────
-        remove_min_items_from_schema=True,
-        dont_force_structured_output=True,
-        add_schema_to_system_prompt=True,
+        max_completion_tokens=8192,
     )
 
     # ── Configure browser profile ────────────────────────────────
@@ -193,21 +329,14 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
     )
 
     # ── Build the Agent ──────────────────────────────────────────
-    # Tuned for Llama 3.2 on Nvidia NIM:
-    #   - max_actions_per_step=3  → simpler output per step
-    #   - use_vision=True         → leverage Llama's vision capability
-    #   - use_thinking=False      → simpler output format for Llama
-    #   - max_failures=10         → more tolerance for occasional parse errors
     agent = Agent(
         task=prompt,
         llm=llm,
         browser_session=browser_session,
         controller=controller,
         register_new_step_callback=_on_step,
-        max_actions_per_step=3,
+        max_actions_per_step=5,
         use_vision=True,
-        use_thinking=False,
-        max_failures=10,
     )
 
     # ── Execute the Agent ────────────────────────────────────────
