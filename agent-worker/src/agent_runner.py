@@ -64,7 +64,7 @@ class GeminiKeyPool:
     def __init__(
         self,
         api_keys: list[str],
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.6-flash",
         temperature: float = 0.1,
         max_output_tokens: int = 8192,
     ) -> None:
@@ -313,7 +313,7 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
     # ── Initialize the LLM (Gemini 2.0 Flash — Multi-Key Pool) ──
     llm = GeminiKeyPool(
         api_keys=settings.gemini_api_keys,
-        model="gemini-2.5-flash",
+        model="gemini-3.6-flash",
         temperature=0.1,
         max_output_tokens=8192,
     )
