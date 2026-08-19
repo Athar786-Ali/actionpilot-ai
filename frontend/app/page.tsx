@@ -606,21 +606,177 @@ export default function Home() {
             </div>
 
             {/* Result card (shown on completion) */}
-            {activeJob.status === 'COMPLETED' && Boolean(activeJob.resultData) && (
-              <div className="mt-4 glass rounded-2xl p-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span className="text-sm font-semibold text-emerald-400">
-                    Agent Result
-                  </span>
+            {activeJob.status === 'COMPLETED' && Boolean(activeJob.resultData) && (() => {
+              const rd = activeJob.resultData as Record<string, unknown>;
+              const finalResult = (rd.final_result as string) || '';
+              const totalActions = (rd.total_actions as number) ?? 0;
+              const isSuccessful = rd.is_successful as boolean | null;
+              const errors = (rd.errors as string[]) || [];
+              const extracted = (rd.extracted_content as string[]) || [];
+              const nonNullErrors = errors.filter(
+                (e) => e && e !== 'None' && e !== 'null'
+              );
+
+              // Simple renderer: split final_result into lines and
+              // render numbered items, bullets, or plain paragraphs.
+              const renderFinalResult = (text: string) => {
+                const lines = text.split('\n').filter((l) => l.trim());
+                return lines.map((line, i) => {
+                  const numberedMatch = line.match(
+                    /^(\d+)[.)]\s*(.*)/
+                  );
+                  const bulletMatch = line.match(/^[-•*]\s*(.*)/);
+
+                  if (numberedMatch) {
+                    return (
+                      <div
+                        key={i}
+                        className="flex gap-3 py-2 border-b border-zinc-800/50 last:border-0"
+                      >
+                        <span className="shrink-0 w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-xs font-bold text-indigo-400">
+                          {numberedMatch[1]}
+                        </span>
+                        <span className="text-sm text-zinc-200 leading-relaxed pt-0.5">
+                          {numberedMatch[2]}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  if (bulletMatch) {
+                    return (
+                      <div
+                        key={i}
+                        className="flex gap-2 py-1.5"
+                      >
+                        <span className="shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                        <span className="text-sm text-zinc-200 leading-relaxed">
+                          {bulletMatch[1]}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <p
+                      key={i}
+                      className="text-sm text-zinc-200 leading-relaxed py-1"
+                    >
+                      {line}
+                    </p>
+                  );
+                });
+              };
+
+              return (
+                <div className="mt-4 glass rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
+                  {/* ── Result header with metadata badges ───── */}
+                  <div className="px-5 py-4 border-b border-zinc-800/60 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-md" />
+                        <CheckCircle2 className="relative w-5 h-5 text-emerald-400" />
+                      </div>
+                      <span className="text-base font-bold text-white">
+                        Mission Result
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Success badge */}
+                      {isSuccessful !== null && (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                            isSuccessful
+                              ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/25'
+                              : 'text-amber-400 bg-amber-400/10 border-amber-400/25'
+                          }`}
+                        >
+                          {isSuccessful ? (
+                            <CheckCircle2 className="w-3 h-3" />
+                          ) : (
+                            <XCircle className="w-3 h-3" />
+                          )}
+                          {isSuccessful ? 'Successful' : 'Partial'}
+                        </span>
+                      )}
+
+                      {/* Actions badge */}
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-indigo-400 bg-indigo-400/10 border border-indigo-400/25">
+                        <Zap className="w-3 h-3" />
+                        {totalActions} Step{totalActions !== 1 ? 's' : ''}
+                      </span>
+
+                      {/* Errors badge */}
+                      {nonNullErrors.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-red-400 bg-red-400/10 border border-red-400/25">
+                          <XCircle className="w-3 h-3" />
+                          {nonNullErrors.length} Error{nonNullErrors.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Final result — prominent ─────────────── */}
+                  {finalResult && (
+                    <div className="px-5 py-4">
+                      <div className="space-y-0.5">
+                        {renderFinalResult(finalResult)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Collapsible raw details ─────────────── */}
+                  {(nonNullErrors.length > 0 || extracted.length > 0) && (
+                    <details className="group border-t border-zinc-800/50">
+                      <summary className="px-5 py-3 cursor-pointer text-xs font-semibold text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 select-none">
+                        <ChevronRight className="w-3.5 h-3.5 transition-transform duration-200 group-open:rotate-90" />
+                        View Raw Details
+                      </summary>
+                      <div className="px-5 pb-4 space-y-3">
+                        {/* Errors */}
+                        {nonNullErrors.length > 0 && (
+                          <div>
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-red-400/70 mb-1 block">
+                              Errors
+                            </span>
+                            <div className="space-y-1">
+                              {nonNullErrors.map((err, i) => (
+                                <div
+                                  key={i}
+                                  className="text-xs text-red-300/80 bg-red-400/5 border border-red-400/10 rounded-lg px-3 py-1.5 font-mono break-words"
+                                >
+                                  {err}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Extracted content */}
+                        {extracted.length > 0 && (
+                          <div>
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-cyan-400/70 mb-1 block">
+                              Extracted Content
+                            </span>
+                            <div className="space-y-1">
+                              {extracted.map((item, i) => (
+                                <div
+                                  key={i}
+                                  className="text-xs text-cyan-300/80 bg-cyan-400/5 border border-cyan-400/10 rounded-lg px-3 py-1.5 break-words"
+                                >
+                                  {item}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  )}
                 </div>
-                <pre className="text-xs text-zinc-300 bg-zinc-900/50 rounded-lg p-4 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap">
-                  {typeof activeJob.resultData === 'string'
-                    ? (activeJob.resultData as string)
-                    : JSON.stringify(activeJob.resultData as object, null, 2)}
-                </pre>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Launch another */}
             {isTerminal && (
@@ -644,7 +800,7 @@ export default function Home() {
         {/* ── Footer ──────────────────────────────────────────── */}
         <footer className="mt-16 pb-8 text-center">
           <p className="text-xs text-zinc-700">
-            ActionPilot AI · Built with browser-use + Gemini 2.0 Flash
+            ActionPilot AI · Built with browser-use + Gemini 3.6 Flash
           </p>
         </footer>
       </div>
