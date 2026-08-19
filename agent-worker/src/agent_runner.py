@@ -155,8 +155,14 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
             # Never let logging failures crash the agent
             logger.warning("⚠️ Failed to log step via webhook: %s", log_err)
 
+    # ── Custom LLM class (browser-use expects a .provider attribute) ─
+    class CustomChatOpenAI(ChatOpenAI):
+        @property
+        def provider(self) -> str:
+            return "openai"
+
     # ── Initialize the LLM (Nvidia NIM — Llama 3.2 Vision) ────────
-    llm = ChatOpenAI(
+    llm = CustomChatOpenAI(
         base_url="https://integrate.api.nvidia.com/v1",
         model="meta/llama-3.2-90b-vision-instruct",
         api_key=settings.nvidia_api_key,
@@ -184,7 +190,7 @@ async def run_agent(job_id: str, prompt: str) -> dict[str, Any]:
         max_actions_per_step=5,
         use_vision=True,
     )
-
+    
     # ── Execute the Agent ────────────────────────────────────────
     logger.info("▶️  Starting agent for job %s with prompt: %s", job_id, prompt[:100])
     webhook.send_agent_action(
