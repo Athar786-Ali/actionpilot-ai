@@ -2,124 +2,105 @@
 
 # 🤖 ActionPilot AI
 
-### Enterprise-Grade Autonomous Web Automation Platform
+### Autonomous Browser Automation Platform — Powered by Gemini AI
 
-*An asynchronous, event-driven orchestration layer over `browser-use` — enabling LLM-powered browser agents that can navigate, interact, and complete complex web tasks with human-in-the-loop support.*
+*Tell the agent what to do in plain English. It launches a real browser, navigates pages, clicks buttons, fills forms, extracts data — and pauses for your OTP when needed.*
 
+[![Live Demo](https://img.shields.io/badge/▶_Watch_Demo-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](#-demo)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Redis](https://img.shields.io/badge/Redis-7+-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Gemini](https://img.shields.io/badge/Gemini_2.0_Flash-LLM-8E75B2?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
+[![Next.js](https://img.shields.io/badge/Next.js_15-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Gemini](https://img.shields.io/badge/Gemini_3.6_Flash-8E75B2?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 ---
 
-**[Architecture](#-system-architecture) · [Quick Start](#-quick-start) · [API Reference](#-api-reference) · [HITL Flow](#-human-in-the-loop-hitl-deep-dive) · [Project Structure](#-project-structure)**
+**[✨ Features](#-features) · [🏗 Architecture](#-system-architecture) · [🚀 Quick Start](#-quick-start) · [📡 API](#-api-reference) · [🔄 HITL](#-human-in-the-loop-hitl-deep-dive) · [🔑 Multi-Key](#-multi-key-failover-rotation)**
 
 </div>
 
 ---
 
-## 📋 Table of Contents
+## 🎬 Demo
 
-- [Problem Statement](#-problem-statement)
-- [Solution Overview](#-solution-overview)
-- [System Architecture](#-system-architecture)
-- [Tech Stack](#-tech-stack)
-- [Project Structure](#-project-structure)
-- [Database Schema](#-database-schema)
-- [Quick Start](#-quick-start)
-- [API Reference](#-api-reference)
-- [Human-in-the-Loop (HITL) Deep Dive](#-human-in-the-loop-hitl-deep-dive)
-- [Agent Worker Internals](#-agent-worker-internals)
-- [Sequence Diagrams](#-sequence-diagrams)
-- [Configuration Reference](#-configuration-reference)
-- [Design Decisions & Trade-offs](#-design-decisions--trade-offs)
-- [Error Handling Strategy](#-error-handling-strategy)
-- [Scaling Considerations](#-scaling-considerations)
-- [Contributing](#-contributing)
-- [License](#-license)
+```
+You type:  "Go to amazon.in, search for wireless headphones, extract top 5 with prices"
+
+Agent does: Launch browser → Navigate to Amazon → Type in search bar → Click Search →
+            Read results → Extract product names + prices → Return formatted list
+
+You see:   Real-time action logs streaming in a terminal-style UI, then a clean
+           result card with numbered items and metadata badges.
+```
 
 ---
 
-## 🎯 Problem Statement
+## ✨ Features
 
-Modern enterprise workflows often require automating complex, multi-step interactions with web applications — filling forms, navigating dashboards, extracting data, or completing transactions. These tasks traditionally demand brittle RPA scripts that break with every UI change.
-
-**Key challenges:**
-- Web UIs change frequently, breaking hardcoded selectors and scripts
-- Many workflows require human intervention (OTP, CAPTCHA, 2FA)
-- Browser automation at scale requires robust job queuing and failure recovery
-- Real-time visibility into what the agent is doing is critical for trust and debugging
-
----
-
-## 💡 Solution Overview
-
-**ActionPilot AI** solves this by combining:
-
-1. **LLM-Powered Browser Agents** — Instead of brittle selectors, a Google Gemini 2.0 Flash model *sees* the page (via vision) and *reasons* about what to click, type, and navigate. The agent adapts to UI changes automatically.
-
-2. **Decoupled Microservices Architecture** — A Node.js API Gateway handles client requests, job persistence, and audit logging. A Python Agent Worker handles browser automation. They communicate asynchronously via Redis (BullMQ + Pub/Sub) and Webhooks.
-
-3. **Human-in-the-Loop (HITL)** — When the agent encounters an OTP field, CAPTCHA, or any verification that requires a human, it *pauses execution*, alerts the API, and *waits* for the human to submit the code — then seamlessly resumes.
-
-4. **Full Audit Trail** — Every browser action (click, type, navigate) is logged in real-time to PostgreSQL via webhooks, providing complete observability into agent behavior.
+| Feature | Description |
+|---------|-------------|
+| 🧠 **Natural Language Tasks** | Describe any web task in plain English — the AI figures out what to click, type, and navigate |
+| 👁️ **Vision-Capable Agent** | Gemini 3.6 Flash *sees* the page via screenshots and reasons about UI elements — no brittle CSS selectors |
+| 🔄 **Human-in-the-Loop (HITL)** | Agent auto-pauses on OTP/CAPTCHA, sends you a modal, waits for your code, then resumes seamlessly |
+| 🔑 **Multi-Key Failover** | Up to 5 Gemini API keys with automatic rotation on rate limits — zero downtime for heavy workloads |
+| 📺 **Real-Time Dashboard** | Glassmorphic Next.js UI with live-streaming action logs, status badges, and enterprise result cards |
+| 📋 **Full Audit Trail** | Every click, type, navigate, and scroll is logged to PostgreSQL with timestamps |
+| 🏗️ **Microservices Architecture** | Decoupled Node.js API + Python Worker — communicate via Redis (BullMQ + Pub/Sub) + Webhooks |
+| 🎯 **Enterprise Result Cards** | Rich text rendering of results — numbered lists, bullet points, success badges, collapsible raw details |
 
 ---
 
 ## 🏗 System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         CLIENT APPLICATION                              │
-│                    (Web Dashboard / API Consumer)                        │
-└──────────────────────────────┬──────────────────────────────────────────┘
-                               │
-                    POST /api/jobs { prompt }
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    NODE.JS API GATEWAY (Express + TypeScript)            │
-│                                                                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐  ┌───────────┐ │
-│  │ Job Routes   │  │ Webhook      │  │ HITL Endpoint  │  │ Health    │ │
-│  │ POST /jobs   │  │ POST /logs   │  │ POST /submit-  │  │ GET /     │ │
-│  │ GET /jobs/:id│  │ (from Python)│  │   otp          │  │  health   │ │
-│  └──────┬───────┘  └──────▲───────┘  └───────┬────────┘  └───────────┘ │
-│         │                 │                   │                          │
-│         ▼                 │                   ▼                          │
-│  ┌──────────────┐         │           ┌────────────────┐                │
-│  │   Prisma ORM │         │           │ Redis Pub/Sub  │                │
-│  │ (PostgreSQL) │         │           │  (Publisher)   │                │
-│  └──────┬───────┘         │           └───────┬────────┘                │
-│         │                 │                   │                          │
-│         ▼                 │                   │ PUBLISH otp              │
-│  ┌──────────────┐         │                   │                          │
-│  │   BullMQ     │         │                   │                          │
-│  │ (Job Queue)  │         │                   │                          │
-│  └──────┬───────┘         │                   │                          │
-└─────────┼─────────────────┼───────────────────┼──────────────────────────┘
-          │                 │                   │
-          │ ENQUEUE         │ HTTP POST         │ Redis Pub/Sub
-          │ {jobId, prompt} │ (webhook)         │
-          ▼                 │                   ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                  PYTHON AGENT WORKER (browser-use + Gemini)             │
-│                                                                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐                │
-│  │ BullMQ       │  │ Agent Runner │  │ HITL Handler   │                │
-│  │ Consumer     │──▶ browser-use  │──▶ Redis Pub/Sub  │                │
-│  │ (main.py)    │  │ + Gemini LLM │  │ (Subscriber)   │                │
-│  └──────────────┘  └──────┬───────┘  └────────────────┘                │
-│                           │                                             │
-│                    ┌──────▼───────┐                                     │
-│                    │  Playwright  │                                     │
-│                    │  (Chromium)  │                                     │
-│                    └──────────────┘                                     │
-└─────────────────────────────────────────────────────────────────────────┘
+                            ┌──────────────────────────────┐
+                            │     Next.js 15 Frontend      │
+                            │  (Glassmorphic Dashboard UI)  │
+                            └──────────────┬───────────────┘
+                                           │ HTTP (proxied)
+                                           ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     NODE.JS API GATEWAY  (Express + TypeScript)              │
+│                                                                              │
+│   POST /api/jobs          GET /api/jobs/:id        POST /api/jobs/:id/       │
+│   → Create + Enqueue      → Status + Audit Logs    submit-otp               │
+│                                                    → Publish OTP via Redis   │
+│                                                                              │
+│   ┌────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │
+│   │ Prisma ORM │   │   BullMQ     │   │ Redis Pub/Sub│   │  Zod + HMAC  │  │
+│   │ PostgreSQL │   │  Job Queue   │   │  (Publisher)  │   │  Validation  │  │
+│   └─────┬──────┘   └──────┬───────┘   └──────┬───────┘   └──────────────┘  │
+└─────────┼─────────────────┼──────────────────┼──────────────────────────────┘
+          │                 │                  │
+          │ Persist         │ Enqueue          │ PUBLISH otp
+          ▼                 ▼                  ▼
+   ┌────────────┐   ┌────────────┐     ┌────────────┐
+   │ PostgreSQL │   │   Redis    │     │   Redis    │
+   │  (Jobs +   │   │  (Queue)   │     │ (Pub/Sub)  │
+   │ AuditLogs) │   └─────┬──────┘     └─────┬──────┘
+   └────────────┘         │                   │
+                          │ Consume job       │ SUBSCRIBE
+                          ▼                   ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    PYTHON AGENT WORKER  (browser-use v0.13.8)                │
+│                                                                              │
+│   ┌──────────────┐   ┌───────────────────────┐   ┌──────────────────────┐  │
+│   │ BullMQ       │   │    GeminiKeyPool       │   │   HITL Handler       │  │
+│   │ Consumer     │──▶│  (Multi-Key Failover)  │   │  Redis Pub/Sub       │  │
+│   │ (main.py)    │   │                        │   │  (Subscriber)        │  │
+│   └──────────────┘   │  Key1 → Key2 → Key3   │   └──────────────────────┘  │
+│                      │  ChatGoogle × N         │                             │
+│                      └───────────┬─────────────┘                             │
+│                                  │                                           │
+│                      ┌───────────▼─────────────┐                             │
+│                      │  browser-use Agent Loop  │                             │
+│                      │  Screenshot → LLM → Act  │                             │
+│                      └───────────┬─────────────┘                             │
+│                                  │                                           │
+│                      ┌───────────▼─────────────┐                             │
+│                      │  Playwright (Chromium)   │                             │
+│                      └─────────────────────────┘                             │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Communication Patterns
@@ -129,48 +110,96 @@ Modern enterprise workflows often require automating complex, multi-step interac
 | **Job Queue** | BullMQ (Redis) | API → Worker | Dispatch browser automation tasks |
 | **Webhooks** | HTTP POST | Worker → API | Real-time action logs & status updates |
 | **Pub/Sub** | Redis Pub/Sub | API → Worker | Deliver OTP/CAPTCHA codes for HITL |
+| **Polling** | HTTP GET (2s) | Frontend → API | Live dashboard updates |
 | **Database** | PostgreSQL (Prisma) | API only | Job persistence & audit trail |
 
 ---
 
 ## 🛠 Tech Stack
 
-### API Gateway (`/api-backend`)
+<table>
+<tr><th>Layer</th><th>Technology</th><th>Why This Choice</th></tr>
+<tr>
+  <td rowspan="5"><strong>Frontend</strong></td>
+  <td>Next.js 15 (App Router)</td><td>Server-side rendering, API route proxying, React 19</td>
+</tr>
+<tr><td>Tailwind CSS v4</td><td>Utility-first, glassmorphism effects, zero-config</td></tr>
+<tr><td>Lucide React</td><td>Tree-shakeable icons, consistent design</td></tr>
+<tr><td>TypeScript 5.7+</td><td>Full type safety across the frontend</td></tr>
+<tr><td>React 19</td><td>Latest concurrent features, use client components</td></tr>
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **Node.js** | 18+ | Runtime environment |
-| **TypeScript** | 5.7+ | Strict type-safe codebase |
-| **Express.js** | 4.21+ | HTTP server & routing |
-| **Prisma ORM** | 6.9+ | Type-safe database access with migrations |
-| **PostgreSQL** | 15+ | Persistent storage for jobs & audit logs |
-| **BullMQ** | 5.34+ | Redis-backed distributed job queue |
-| **ioredis** | 5.6+ | Redis client (3 dedicated connections) |
-| **Zod** | 3.24+ | Runtime schema validation on all inputs |
-| **Helmet** | 8.1+ | HTTP security headers |
-| **Morgan** | 1.10+ | HTTP request logging |
+<tr>
+  <td rowspan="6"><strong>API Gateway</strong></td>
+  <td>Node.js + Express</td><td>Fast I/O, mature ecosystem, TypeScript support</td>
+</tr>
+<tr><td>Prisma ORM 6.9+</td><td>Type-safe database access, auto-migrations</td></tr>
+<tr><td>BullMQ 5.34+</td><td>Redis-backed job queue, retries, backoff</td></tr>
+<tr><td>ioredis 5.6+</td><td>3 dedicated connections (queue, pub, sub)</td></tr>
+<tr><td>Zod 3.24+</td><td>Runtime input validation on all endpoints</td></tr>
+<tr><td>Helmet + Morgan</td><td>Security headers + HTTP logging</td></tr>
 
-### Agent Worker (`/agent-worker`)
+<tr>
+  <td rowspan="6"><strong>Agent Worker</strong></td>
+  <td>Python 3.11+</td><td>Async/await, type hints, browser-use compatibility</td>
+</tr>
+<tr><td>browser-use 0.13.8</td><td>LLM-powered browser automation framework</td></tr>
+<tr><td>Gemini 3.6 Flash</td><td>Vision-capable, fast, structured output support</td></tr>
+<tr><td>Playwright</td><td>Cross-browser automation (Chromium)</td></tr>
+<tr><td>Pydantic 2.10+</td><td>Settings validation, data models</td></tr>
+<tr><td>redis-py 5.2+</td><td>Pub/Sub for HITL communication</td></tr>
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **Python** | 3.11+ | Runtime environment |
-| **browser-use** | 0.2+ | LLM-powered browser automation framework |
-| **Playwright** | 1.49+ | Cross-browser automation (Chromium) |
-| **LangChain** | 0.3+ | LLM orchestration framework |
-| **Google Gemini 2.0 Flash** | — | Vision-capable LLM for page understanding |
-| **BullMQ (Python)** | 1.5+ | Queue consumer (compatible with Node.js BullMQ) |
-| **redis-py** | 5.2+ | Redis Pub/Sub for HITL communication |
-| **Pydantic** | 2.10+ | Settings validation & data models |
-| **Requests** | 2.32+ | HTTP client with retry logic for webhooks |
+<tr>
+  <td rowspan="2"><strong>Infrastructure</strong></td>
+  <td>Redis 7+</td><td>Job queue (BullMQ) + HITL Pub/Sub messaging</td>
+</tr>
+<tr><td>PostgreSQL 15+</td><td>Persistent storage with relational integrity</td></tr>
+</table>
 
-### Infrastructure
+---
 
-| Technology | Purpose |
-|-----------|---------|
-| **Redis 7+** | Job queue (BullMQ) + HITL Pub/Sub messaging |
-| **PostgreSQL 15+** | Persistent storage with relational integrity |
-| **Docker** | Containerization (optional) |
+## 🔑 Multi-Key Failover Rotation
+
+One of the most **production-critical** features. Heavy web automation tasks can exhaust a single API key's rate limit. ActionPilot solves this with a `GeminiKeyPool`:
+
+```
+Request → Key 1 (5 internal retries with backoff)
+               ↓ 429 Rate Limit
+          Key 2 (5 internal retries with backoff)
+               ↓ 429 Rate Limit
+          Key 3 (5 internal retries with backoff)
+               ↓ 429 Rate Limit
+          Key 4 → Key 5 → ... → Error only if ALL keys exhausted
+```
+
+### How It Works
+
+```python
+class GeminiKeyPool:
+    """Implements browser-use's BaseChatModel protocol with automatic key rotation."""
+
+    async def ainvoke(self, messages, output_format, **kwargs):
+        for attempt in range(len(self._clients)):      # Try each key
+            try:
+                return await client.ainvoke(...)         # ChatGoogle (5 internal retries)
+            except rate_limit_error:
+                logger.warning("🔄 Rate limit on Key %d → switching to Key %d", ...)
+                self._rotate()                           # Switch to next key
+                await asyncio.sleep(1.0)                 # Brief cooldown
+        raise last_error                                 # All keys exhausted
+```
+
+### Configuration
+
+```env
+# .env — Add up to 5 keys for automatic failover
+GEMINI_API_KEY_1=AIza...your-first-key
+GEMINI_API_KEY_2=AIza...your-second-key
+GEMINI_API_KEY_3=AIza...your-third-key
+GEMINI_API_KEY_4=
+GEMINI_API_KEY_5=
+```
+
+> **Math**: Each key gets 5 internal retries × 5 keys = **25 total attempts** with exponential backoff before the agent gives up.
 
 ---
 
@@ -179,137 +208,78 @@ Modern enterprise workflows often require automating complex, multi-step interac
 ```
 ActionPilot-AI/
 │
-├── api-backend/                          # Node.js TypeScript API Gateway
-│   ├── .env.example                      # Environment variable template
-│   ├── package.json                      # Dependencies & npm scripts
-│   ├── tsconfig.json                     # Strict TypeScript configuration
-│   │
+├── frontend/                                 # Next.js 15 Dashboard
+│   ├── app/
+│   │   ├── layout.tsx                       # Root layout + global CSS
+│   │   ├── page.tsx                         # Main dashboard (663→819 lines)
+│   │   └── globals.css                      # Tailwind + glassmorphism + animations
+│   ├── lib/
+│   │   ├── api.ts                           # Typed API client functions
+│   │   └── types.ts                         # Job, AuditLog, ApiResponse types
+│   ├── next.config.ts                       # API proxy rewrites to :3001
+│   ├── tailwind.config.ts                   # Dark theme configuration
+│   └── package.json
+│
+├── api-backend/                              # Node.js TypeScript API Gateway
 │   ├── prisma/
-│   │   ├── schema.prisma                 # Database schema (Job + AuditLog)
-│   │   └── migrations/                   # Auto-generated SQL migrations
-│   │
+│   │   ├── schema.prisma                    # Job + AuditLog models
+│   │   └── migrations/                      # Auto-generated SQL
 │   └── src/
-│       ├── index.ts                      # Express server bootstrap + graceful shutdown
-│       │
+│       ├── index.ts                         # Express server + graceful shutdown
 │       ├── config/
-│       │   ├── env.ts                    # Zod-validated environment variables
-│       │   ├── prisma.ts                 # Singleton PrismaClient (hot-reload safe)
-│       │   └── redis.ts                  # 3× ioredis connections (main, pub, sub)
-│       │
-│       ├── types/
-│       │   └── index.ts                  # All TypeScript interfaces & type definitions
-│       │
+│       │   ├── env.ts                       # Zod-validated env vars
+│       │   ├── prisma.ts                    # Singleton PrismaClient
+│       │   └── redis.ts                     # 3× ioredis connections
 │       ├── controllers/
-│       │   ├── jobController.ts          # POST /jobs, GET /jobs/:id, POST /submit-otp
-│       │   └── webhookController.ts      # POST /webhooks/logs (receives from Python)
-│       │
+│       │   ├── jobController.ts             # Job CRUD + OTP submission
+│       │   └── webhookController.ts         # Receive logs from Python
 │       ├── routes/
-│       │   ├── jobRoutes.ts              # /api/jobs/* route definitions
-│       │   └── webhookRoutes.ts          # /api/webhooks/* route definitions
-│       │
-│       ├── middleware/
-│       │   └── errorHandler.ts           # Global error handler (env-aware)
-│       │
-│       └── workers/
-│           └── jobQueue.ts               # BullMQ queue initialization + config
+│       │   ├── jobRoutes.ts                 # /api/jobs/* routes
+│       │   └── webhookRoutes.ts             # /api/webhooks/* routes
+│       └── middleware/
+│           └── errorHandler.ts              # Global error handler
 │
-├── agent-worker/                         # Python Agentic Browser Worker
-│   ├── .env.example                      # Environment variable template
-│   ├── requirements.txt                  # Python dependencies
-│   │
+├── agent-worker/                             # Python Agent Worker
 │   └── src/
-│       ├── __init__.py                   # Package marker
-│       ├── config.py                     # Pydantic Settings + logging setup
-│       ├── webhook_client.py             # HTTP client → Node.js API (with retry)
-│       ├── hitl_handler.py               # Redis Pub/Sub OTP listener (blocking)
-│       ├── agent_runner.py               # browser-use + Gemini agent + HITL tool
-│       └── main.py                       # BullMQ Worker entry point
+│       ├── config.py                        # Pydantic Settings (5 Gemini keys)
+│       ├── agent_runner.py                  # GeminiKeyPool + browser-use Agent
+│       ├── webhook_client.py                # HTTP client → API (with retry)
+│       ├── hitl_handler.py                  # Redis Pub/Sub OTP listener
+│       └── main.py                          # BullMQ Worker entry point
 │
-└── README.md                             # ← You are here
+├── README.md                                 # ← You are here
+└── LICENSE                                   # MIT License
 ```
 
 ---
 
 ## 🗄 Database Schema
 
-The PostgreSQL database uses two tables managed by Prisma ORM:
-
-### Entity Relationship Diagram
-
 ```
-┌───────────────────────────────┐       ┌───────────────────────────────────┐
-│            jobs               │       │           audit_logs              │
-├───────────────────────────────┤       ├───────────────────────────────────┤
-│ id          UUID (PK)         │       │ id              UUID (PK)        │
-│ prompt      TEXT              │◄──────│ job_id          UUID (FK)        │
-│ status      JobStatus (ENUM)  │  1:N  │ action_type     VARCHAR          │
-│ result_data JSONB (nullable)  │       │ screenshot_url  VARCHAR (null)   │
-│ created_at  TIMESTAMP         │       │ description     TEXT             │
-│ updated_at  TIMESTAMP         │       │ timestamp       TIMESTAMP        │
-└───────────────────────────────┘       └───────────────────────────────────┘
+┌──────────────────────────┐         ┌─────────────────────────────┐
+│          jobs             │         │        audit_logs            │
+├──────────────────────────┤         ├─────────────────────────────┤
+│ id        UUID (PK)      │         │ id            UUID (PK)     │
+│ prompt    TEXT            │◄────────│ job_id        UUID (FK)     │
+│ status    ENUM            │   1:N   │ action_type   VARCHAR       │
+│ result    JSONB (null)    │         │ description   TEXT          │
+│ created   TIMESTAMP       │         │ screenshot    VARCHAR (null)│
+│ updated   TIMESTAMP       │         │ timestamp     TIMESTAMP     │
+└──────────────────────────┘         └─────────────────────────────┘
 ```
 
 ### Job Status State Machine
 
 ```
-                ┌──────────┐
-                │ PENDING  │ ← Job created, queued in BullMQ
-                └────┬─────┘
-                     │ Worker picks up job
+   PENDING ──────▶ RUNNING ──────▶ COMPLETED
+                     │    ▲
+                     │    │ OTP submitted
+                     ▼    │
+               PAUSED_FOR_HITL
+                     │
+                  (timeout)
                      ▼
-                ┌──────────┐
-            ┌──│ RUNNING  │──┐
-            │  └──────────┘  │
-            │                │ Agent detects OTP/CAPTCHA
-            │                ▼
-            │  ┌───────────────────┐
-            │  │ PAUSED_FOR_HITL   │ ← Waiting for human input
-            │  └────────┬──────────┘
-            │           │ Human submits OTP
-            │           ▼
-            │  ┌──────────┐
-            │  │ RUNNING  │ ← Agent resumes
-            │  └────┬─────┘
-            │       │
-            ▼       ▼
-    ┌──────────┐  ┌───────────┐
-    │  FAILED  │  │ COMPLETED │
-    └──────────┘  └───────────┘
-```
-
-### Prisma Schema
-
-```prisma
-enum JobStatus {
-  PENDING
-  RUNNING
-  PAUSED_FOR_HITL
-  COMPLETED
-  FAILED
-}
-
-model Job {
-  id          String    @id @default(uuid())
-  prompt      String
-  status      JobStatus @default(PENDING)
-  resultData  Json?     @map("result_data")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  auditLogs   AuditLog[]
-  @@map("jobs")
-}
-
-model AuditLog {
-  id            String   @id @default(uuid())
-  jobId         String   @map("job_id")
-  actionType    String   @map("action_type")
-  screenshotUrl String?  @map("screenshot_url")
-  description   String
-  timestamp     DateTime @default(now())
-  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  @@index([jobId])
-  @@map("audit_logs")
-}
+                   FAILED
 ```
 
 ---
@@ -318,121 +288,61 @@ model AuditLog {
 
 ### Prerequisites
 
-| Requirement | Version | Installation |
-|------------|---------|-------------|
+| Requirement | Version | Install |
+|------------|---------|---------|
 | Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
 | Python | 3.11+ | [python.org](https://www.python.org/) |
 | PostgreSQL | 15+ | `brew install postgresql@15` |
 | Redis | 7+ | `brew install redis` |
 
-### Step 1: Clone the Repository
+### 1. Clone & Start Infrastructure
 
 ```bash
 git clone https://github.com/Athar786-Ali/actionpilot-ai.git
 cd actionpilot-ai
-```
 
-### Step 2: Start Infrastructure Services
-
-```bash
-# Start PostgreSQL (if not already running)
-brew services start postgresql@15
-
-# Start Redis
+# Start Redis & PostgreSQL
 brew services start redis
-
-# Verify Redis is running
-redis-cli ping
-# Expected output: PONG
+brew services start postgresql@15
 ```
 
-### Step 3: Setup the API Backend
+### 2. API Backend
 
 ```bash
 cd api-backend
-
-# Install Node.js dependencies
 npm install
-
-# Copy and configure environment variables
-cp .env.example .env
-# Edit .env → set your DATABASE_URL if different from default
-
-# Generate Prisma client
+cp .env.example .env          # Edit DATABASE_URL if needed
 npx prisma generate
-
-# Run database migrations
 npx prisma migrate dev --name init
-
-# Start the API server (development mode with hot-reload)
-npm run dev
+npm run dev                    # → http://localhost:3001
 ```
 
-You should see:
-```
-╔══════════════════════════════════════════════╗
-║   🤖 ActionPilot AI — API Gateway           ║
-║   🌐 http://localhost:3001                   ║
-║   📋 Environment: development               ║
-╚══════════════════════════════════════════════╝
-```
-
-### Step 4: Setup the Agent Worker
+### 3. Agent Worker
 
 ```bash
-# Open a new terminal
 cd agent-worker
-
-# Create Python virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Install Playwright browser binaries
 playwright install chromium
-
-# Copy and configure environment variables
-cp .env.example .env
-# Edit .env → set GEMINI_API_KEY to your actual Google Gemini API key
-
-# Start the worker
-python -m src.main
+cp .env.example .env           # Add your GEMINI_API_KEY_1 (get at aistudio.google.com/apikey)
+python -m src.main             # → Listening on BullMQ queue
 ```
 
-You should see:
-```
-╔══════════════════════════════════════════════╗
-║   🤖 ActionPilot AI — Agent Worker           ║
-║   📡 Queue: actionpilot:jobs                 ║
-║   🔗 Redis: localhost:6379                   ║
-╚══════════════════════════════════════════════╝
-🟢 Worker started, waiting for jobs...
-```
-
-### Step 5: Submit Your First Job
+### 4. Frontend Dashboard
 
 ```bash
-curl -X POST http://localhost:3001/api/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Go to google.com and search for ActionPilot AI"}'
+cd frontend
+npm install
+npm run dev                    # → http://localhost:3000
 ```
 
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "prompt": "Go to google.com and search for ActionPilot AI",
-    "status": "PENDING",
-    "resultData": null,
-    "createdAt": "2026-08-13T12:00:00.000Z",
-    "updatedAt": "2026-08-13T12:00:00.000Z"
-  }
-}
-```
+### 5. Try It
+
+Open **http://localhost:3000**, type a prompt like:
+
+> *"Go to google.com, search for 'best laptops 2026', and extract the top 5 results"*
+
+Hit **Launch Agent** and watch the live execution console stream actions in real-time! 🚀
 
 ---
 
@@ -440,589 +350,293 @@ Response:
 
 ### Base URL: `http://localhost:3001`
 
----
+#### `POST /api/jobs` — Create Job
 
-### `POST /api/jobs` — Create Automation Job
-
-Submit a natural language task for the browser agent to execute.
-
-**Request:**
-```http
-POST /api/jobs
-Content-Type: application/json
-
-{
-  "prompt": "Go to amazon.in, search for 'wireless headphones', and extract the top 5 results with prices"
-}
+```bash
+curl -X POST http://localhost:3001/api/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Go to amazon.in, search wireless headphones, extract top 5 with prices"}'
 ```
 
-**Response (201 Created):**
 ```json
 {
   "success": true,
   "data": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "prompt": "Go to amazon.in, search for 'wireless headphones'...",
-    "status": "PENDING",
-    "resultData": null,
-    "createdAt": "2026-08-13T17:50:00.000Z",
-    "updatedAt": "2026-08-13T17:50:00.000Z"
+    "status": "PENDING"
   }
 }
 ```
 
-**Validation Rules:**
-| Field | Type | Constraints |
-|-------|------|------------|
-| `prompt` | `string` | Required, 1–4096 characters |
+#### `GET /api/jobs/:id` — Poll Status & Logs
 
----
-
-### `GET /api/jobs/:id` — Get Job Status & Audit Logs
-
-Retrieve a job's current status along with its complete audit trail.
-
-**Request:**
-```http
-GET /api/jobs/550e8400-e29b-41d4-a716-446655440000
-```
-
-**Response (200 OK):**
 ```json
 {
   "success": true,
   "data": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "prompt": "Go to amazon.in, search for 'wireless headphones'...",
+    "id": "550e8400-...",
     "status": "COMPLETED",
     "resultData": {
-      "final_result": "Found 5 products: ...",
-      "total_actions": 12
+      "final_result": "1. Sony WH-1000XM5 — ₹24,990\n2. Samsung Galaxy Buds Pro — ₹12,990\n...",
+      "total_actions": 12,
+      "is_successful": true
     },
-    "createdAt": "2026-08-13T17:50:00.000Z",
-    "updatedAt": "2026-08-13T17:50:45.000Z",
     "auditLogs": [
-      {
-        "id": "log-uuid-1",
-        "jobId": "550e8400-...",
-        "actionType": "JOB_STARTED",
-        "screenshotUrl": null,
-        "description": "Agent worker has picked up the job and started execution",
-        "timestamp": "2026-08-13T17:50:02.000Z"
-      },
-      {
-        "id": "log-uuid-2",
-        "jobId": "550e8400-...",
-        "actionType": "NAVIGATE",
-        "screenshotUrl": null,
-        "description": "Navigated to https://amazon.in",
-        "timestamp": "2026-08-13T17:50:05.000Z"
-      },
-      {
-        "id": "log-uuid-3",
-        "jobId": "550e8400-...",
-        "actionType": "TYPE",
-        "screenshotUrl": null,
-        "description": "Typed 'wireless headphones' into search field",
-        "timestamp": "2026-08-13T17:50:10.000Z"
-      }
+      { "actionType": "NAVIGATE", "description": "Navigated to https://amazon.in", "timestamp": "..." },
+      { "actionType": "TYPE", "description": "Typed 'wireless headphones' into search", "timestamp": "..." },
+      { "actionType": "CLICK", "description": "Clicked Search button", "timestamp": "..." }
     ]
   }
 }
 ```
 
----
+#### `POST /api/jobs/:id/submit-otp` — HITL OTP Submission
 
-### `POST /api/jobs/:id/submit-otp` — Submit OTP (Human-in-the-Loop)
-
-When an agent is paused waiting for human input (status = `PAUSED_FOR_HITL`), use this endpoint to submit the OTP/verification code.
-
-**Request:**
-```http
-POST /api/jobs/550e8400-e29b-41d4-a716-446655440000/submit-otp
-Content-Type: application/json
-
-{
-  "otp": "482916"
-}
+```bash
+curl -X POST http://localhost:3001/api/jobs/{id}/submit-otp \
+  -H "Content-Type: application/json" \
+  -d '{"otp": "482916"}'
 ```
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "message": "OTP submitted and published to worker"
-  }
-}
-```
-
-**Error Cases:**
-| HTTP Status | Scenario |
-|-------------|----------|
-| `404` | Job not found |
-| `409` | Job is not in `PAUSED_FOR_HITL` status |
-| `400` | Invalid or missing OTP |
-
----
-
-### `POST /api/webhooks/logs` — Receive Agent Logs (Internal)
-
-Receives real-time action logs from the Python Agent Worker. This is an **internal endpoint** authenticated via the `x-webhook-secret` header.
-
-**Request:**
-```http
-POST /api/webhooks/logs
-Content-Type: application/json
-x-webhook-secret: your-webhook-secret-key
-
-{
-  "jobId": "550e8400-e29b-41d4-a716-446655440000",
-  "actionType": "CLICK",
-  "description": "Clicked 'Search' button",
-  "screenshotUrl": "https://storage.example.com/screenshot.png",
-  "status": "RUNNING"
-}
-```
-
-**Response (201 Created):**
-```json
-{
-  "success": true,
-  "data": {
-    "logId": "audit-log-uuid"
-  }
-}
-```
-
----
-
-### `GET /health` — Health Check
-
-```http
-GET /health
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "service": "actionpilot-api-backend",
-  "timestamp": "2026-08-13T17:50:00.000Z"
-}
-```
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/jobs` | POST | Create automation job |
+| `/api/jobs/:id` | GET | Get status + audit logs |
+| `/api/jobs/:id/submit-otp` | POST | Submit OTP (HITL) |
+| `/api/webhooks/logs` | POST | Internal: receive worker logs |
+| `/health` | GET | Health check |
 
 ---
 
 ## 🔄 Human-in-the-Loop (HITL) Deep Dive
 
-The HITL mechanism is the most architecturally interesting feature of ActionPilot AI. It enables the agent to **pause mid-execution**, wait for human input, and **resume exactly where it left off**.
+The HITL mechanism is the most architecturally interesting feature. It enables the agent to **pause mid-execution**, wait for human input, and **resume exactly where it left off**.
 
-### Why HITL is Needed
+### The Problem
 
-Many web automation workflows involve security checkpoints:
-- **OTP (One-Time Password)** — Sent to the user's phone/email
-- **CAPTCHA** — reCAPTCHA, hCaptcha, image selection challenges
-- **Two-Factor Authentication (2FA)** — Authenticator app codes
+Many web workflows involve security checkpoints:
+- **OTP** — One-Time Password sent to phone/email
+- **CAPTCHA** — reCAPTCHA, hCaptcha, image challenges
+- **2FA** — Authenticator app codes
 - **Email Verification** — Click-to-confirm links
 
-These cannot be solved by the LLM alone. The agent needs to *pause*, signal a human, and *wait*.
+An AI agent cannot solve these alone. It needs to *pause*, signal a human, and *wait*.
 
-### HITL Architecture
+### The Solution — 7-Step Flow
 
 ```
-                        PYTHON WORKER                          NODE.JS API
-                     ┌─────────────────┐                  ┌─────────────────┐
-                     │                 │                  │                 │
-  1. Agent detects   │  browser-use    │   2. Webhook     │  Express        │
-     OTP field  ───▶ │  invokes tool:  │ ──────────────▶  │  updates job    │
-                     │  ask_human_otp  │   PAUSED_FOR_    │  status to      │
-                     │                 │   HITL           │  PAUSED_FOR_    │
-                     │  3. Subscribe   │                  │  HITL           │
-                     │  to Redis       │                  │                 │
-                     │  channel:       │                  │                 │
-                     │  actionpilot:   │                  │                 │
-                     │  hitl:{jobId}   │                  │                 │
-                     │                 │                  │                 │
-                     │  ⏳ BLOCKING    │                  │                 │
-                     │  WAIT...        │                  │                 │
-                     │                 │                  │                 │
-                     │                 │   5. Redis       │  4. Human       │
-                     │  6. Receive OTP │ ◀────────────── │  submits OTP    │
-                     │  from Pub/Sub   │   PUBLISH        │  via POST       │
-                     │                 │   {otp: "123"}   │  /submit-otp    │
-                     │  7. Type OTP    │                  │                 │
-                     │  into browser   │                  │                 │
-                     │  & continue     │                  │                 │
-                     └─────────────────┘                  └─────────────────┘
+ PYTHON WORKER                                    NODE.JS API
+┌─────────────────┐                            ┌─────────────────┐
+│                 │                            │                 │
+│ 1. Agent sees   │   2. Webhook POST          │ 3. Update job   │
+│    OTP field ──▶│──── PAUSED_FOR_HITL ─────▶│    status       │
+│                 │                            │                 │
+│ 4. SUBSCRIBE to │                            │                 │
+│    Redis channel│                            │                 │
+│    hitl:{jobId} │                            │                 │
+│                 │                            │                 │
+│    ⏳ WAITING   │                            │ 5. Human enters │
+│    (up to 300s) │                            │    OTP on       │
+│                 │   6. Redis PUBLISH         │    dashboard    │
+│ 7. Receive OTP ◀│◀─── {otp: "482916"} ◀────│                 │
+│    Type into    │                            │                 │
+│    browser      │                            │                 │
+│    Continue ──▶ │                            │                 │
+└─────────────────┘                            └─────────────────┘
 ```
 
-### Implementation Details
+### Frontend HITL Modal
 
-**Step 1 — Detection:** The LLM (Gemini 2.0 Flash with vision) sees the page screenshot and recognizes an OTP/verification prompt. It decides to invoke the custom `ask_human_for_otp` tool registered on the `browser-use` Controller.
+When the agent pauses, the dashboard automatically shows a sleek modal with a glowing alert icon, asking the user to enter their OTP. On submit, the code is published to Redis, and the agent resumes within milliseconds.
 
-**Step 2 — Webhook Notification:** The tool fires an HTTP POST to the Node.js API:
-```json
-{
-  "jobId": "...",
-  "actionType": "HITL_REQUESTED",
-  "description": "Agent paused for human input: OTP required",
-  "status": "PAUSED_FOR_HITL"
-}
-```
+### Timeout Safety
 
-**Step 3 — Redis Subscribe:** A dedicated Redis connection (separate from BullMQ) subscribes to the channel `actionpilot:hitl:{jobId}` using a background thread with a configurable timeout (default: 300 seconds).
-
-**Step 4 — Human Submits OTP:** A human operator (or external system) calls `POST /api/jobs/:id/submit-otp` with the OTP.
-
-**Step 5 — Redis Publish:** The Node.js API publishes the OTP to Redis:
-```json
-{
-  "jobId": "...",
-  "otp": "482916",
-  "timestamp": "2026-08-13T17:55:00.000Z"
-}
-```
-
-**Step 6 — Receive & Resume:** The Python worker's background thread receives the message, parses the OTP, and returns it to the `ask_human_for_otp` tool.
-
-**Step 7 — Continue Execution:** The LLM receives the OTP string as the tool's return value and types it into the appropriate browser field. The agent loop continues.
-
-### Timeout Handling
-
-If no human responds within `HITL_TIMEOUT_SECONDS` (default 300s), the HITL handler raises `HITLTimeoutError`, the job is marked as `FAILED`, and a descriptive error is logged to the audit trail.
+If no human responds within `HITL_TIMEOUT_SECONDS` (default: 300s), the handler raises `HITLTimeoutError`, the job is marked `FAILED`, and a descriptive error is logged.
 
 ---
 
 ## 🧠 Agent Worker Internals
 
-### How `browser-use` Works with Gemini
+### The Agent Loop
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                    AGENT LOOP (per step)                    │
-│                                                            │
-│  1. Take screenshot of current browser page                │
-│  2. Send screenshot + task + history → Gemini 2.0 Flash    │
-│  3. LLM returns structured action(s):                      │
-│     • click(selector)                                      │
-│     • type(selector, text)                                 │
-│     • navigate(url)                                        │
-│     • scroll(direction)                                    │
-│     • ask_human_for_otp(reason)  ← custom HITL tool        │
-│     • done(result)                                         │
-│  4. Execute action(s) via Playwright                       │
-│  5. Log action via webhook → Node.js API                   │
-│  6. Repeat until done() or max steps                       │
-└────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                    AGENT LOOP  (per step)                       │
+│                                                                │
+│  1. 📸 Screenshot current browser page                         │
+│  2. 🧠 Send screenshot + task + history → Gemini 3.6 Flash    │
+│  3. 📋 LLM returns structured action(s):                      │
+│         click(element)  |  type(text)  |  navigate(url)        │
+│         scroll(dir)     |  done(result)                        │
+│         ask_human_for_otp(reason)  ← custom HITL tool          │
+│  4. ▶️  Execute action(s) via Playwright                       │
+│  5. 📡 Log action via webhook → Node.js API                   │
+│  6. 🔁 Repeat until done() or max steps                       │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-### Custom Controller Action Registration
+### Key Implementation Details
 
-The `ask_human_for_otp` tool is registered on the `browser-use` Controller, making it available to the LLM as a callable function:
-
-```python
-@controller.action(
-    description=(
-        "Use this tool when you encounter an OTP input field, CAPTCHA, "
-        "two-factor authentication prompt, or any verification screen "
-        "that requires a code from the human user."
-    ),
-)
-async def ask_human_for_otp(reason: str = "OTP or verification code required") -> str:
-    # 1. Notify API → PAUSED_FOR_HITL
-    webhook.send_status_paused_for_hitl(job_id, reason)
-    
-    # 2. Block until human submits OTP via Redis Pub/Sub
-    otp = await asyncio.get_event_loop().run_in_executor(
-        None, wait_for_human_input, job_id
-    )
-    
-    # 3. Return OTP to LLM → it types into the browser
-    return otp
-```
-
-### Action Logging via Step Instrumentation
-
-Every agent step is instrumented to POST action details to the Node.js webhook endpoint. This is done by wrapping `Agent.step()`:
-
-```python
-original_step = agent.step
-
-async def _instrumented_step(*args, **kwargs):
-    result = await original_step(*args, **kwargs)
-    # Extract action details and POST to webhook
-    webhook.send_agent_action(job_id, action_type, description)
-    return result
-
-agent.step = _instrumented_step
-```
-
-This provides **real-time observability** without modifying the `browser-use` library's internals.
+| Feature | Implementation |
+|---------|---------------|
+| **LLM Wrapper** | `GeminiKeyPool` — implements `BaseChatModel` protocol, wraps N × `ChatGoogle` instances |
+| **Step Logging** | `register_new_step_callback` — non-invasive hook, no monkey-patching |
+| **HITL Tool** | `@controller.action(description=...)` — registered on `Tools` class |
+| **OTP Wait** | `asyncio.run_in_executor()` → blocking Redis SUBSCRIBE in thread pool |
+| **3 Redis Connections** | Queue consumer, Pub/Sub publisher, Pub/Sub subscriber (SUBSCRIBE blocks) |
 
 ---
 
-## 📊 Sequence Diagrams
-
-### Normal Job Execution (Happy Path)
+## 📊 Sequence Diagram — Full Job Lifecycle
 
 ```
-Client          API Gateway         Redis/BullMQ        Python Worker       Browser
-  │                  │                    │                    │                │
-  │ POST /api/jobs   │                    │                    │                │
-  │ {prompt: "..."}  │                    │                    │                │
-  │─────────────────▶│                    │                    │                │
-  │                  │ Save to PostgreSQL │                    │                │
-  │                  │ Enqueue to BullMQ  │                    │                │
-  │                  │───────────────────▶│                    │                │
-  │  201 {id, status}│                    │                    │                │
-  │◀─────────────────│                    │                    │                │
-  │                  │                    │ Job consumed       │                │
-  │                  │                    │───────────────────▶│                │
-  │                  │  Webhook: RUNNING  │                    │                │
-  │                  │◀───────────────────│────────────────────│                │
-  │                  │                    │                    │ Launch Chromium │
-  │                  │                    │                    │───────────────▶│
-  │                  │                    │                    │                │
-  │                  │  Webhook: NAVIGATE │                    │  Navigate      │
-  │                  │◀───────────────────│────────────────────│◀──────────────│
-  │                  │                    │                    │                │
-  │                  │  Webhook: CLICK    │                    │  Click         │
-  │                  │◀───────────────────│────────────────────│◀──────────────│
-  │                  │                    │                    │                │
-  │                  │  Webhook: TYPE     │                    │  Type text     │
-  │                  │◀───────────────────│────────────────────│◀──────────────│
-  │                  │                    │                    │                │
-  │                  │ Webhook: COMPLETED │                    │ Close browser  │
-  │                  │◀───────────────────│────────────────────│───────────────▶│
-  │                  │                    │                    │                │
-  │ GET /api/jobs/:id│                    │                    │                │
-  │─────────────────▶│                    │                    │                │
-  │  200 {COMPLETED} │                    │                    │                │
-  │◀─────────────────│                    │                    │                │
-```
-
-### HITL Flow (OTP Required)
-
-```
-Client          API Gateway         Redis Pub/Sub       Python Worker       Browser
-  │                  │                    │                    │                │
-  │                  │                    │                    │ Agent detects  │
-  │                  │                    │                    │ OTP field      │
-  │                  │                    │                    │◀──────────────│
-  │                  │                    │                    │                │
-  │                  │  Webhook:          │                    │ Invoke tool:   │
-  │                  │  PAUSED_FOR_HITL   │                    │ ask_human_otp  │
-  │                  │◀───────────────────│────────────────────│                │
-  │                  │                    │                    │                │
-  │                  │                    │ SUBSCRIBE          │                │
-  │                  │                    │ actionpilot:hitl:  │                │
-  │                  │                    │ {jobId}            │                │
-  │                  │                    │◀───────────────────│                │
-  │                  │                    │                    │                │
-  │                  │                    │                    │ ⏳ Blocking    │
-  │                  │                    │                    │    wait...     │
-  │                  │                    │                    │                │
-  │ GET /api/jobs/:id│                    │                    │                │
-  │─────────────────▶│                    │                    │                │
-  │ 200 {PAUSED_FOR_ │                    │                    │                │
-  │     HITL}        │                    │                    │                │
-  │◀─────────────────│                    │                    │                │
-  │                  │                    │                    │                │
-  │ POST /submit-otp │                    │                    │                │
-  │ {otp: "482916"}  │                    │                    │                │
-  │─────────────────▶│                    │                    │                │
-  │                  │ Update: RUNNING    │                    │                │
-  │                  │ PUBLISH otp        │                    │                │
-  │                  │───────────────────▶│                    │                │
-  │  200 {submitted} │                    │                    │                │
-  │◀─────────────────│                    │ Deliver OTP        │                │
-  │                  │                    │───────────────────▶│                │
-  │                  │                    │                    │                │
-  │                  │                    │                    │ Type OTP       │
-  │                  │                    │                    │───────────────▶│
-  │                  │                    │                    │                │
-  │                  │                    │                    │ Continue agent │
-  │                  │                    │                    │ loop...        │
+ Dashboard        API Gateway       PostgreSQL      Redis/BullMQ     Python Worker      Browser
+    │                  │                │                │                │                │
+    │ POST /api/jobs   │                │                │                │                │
+    │─────────────────▶│ INSERT job     │                │                │                │
+    │                  │───────────────▶│                │                │                │
+    │                  │ Enqueue        │                │                │                │
+    │                  │────────────────│───────────────▶│                │                │
+    │ 201 {id}         │                │                │                │                │
+    │◀─────────────────│                │                │ Consume job    │                │
+    │                  │                │                │───────────────▶│                │
+    │                  │ Webhook:       │                │                │ Launch Chrome  │
+    │                  │ RUNNING        │                │                │───────────────▶│
+    │                  │◀───────────────│────────────────│────────────────│                │
+    │ Poll GET /jobs/id│                │                │                │                │
+    │─────────────────▶│ SELECT job     │                │                │ Navigate       │
+    │ {status, logs}   │◀──────────────│                │                │◀──────────────│
+    │◀─────────────────│                │                │                │ Click, Type    │
+    │                  │ Webhook: DONE  │                │                │◀──────────────│
+    │                  │◀───────────────│────────────────│────────────────│                │
+    │                  │ UPDATE result  │                │                │ Close browser  │
+    │                  │───────────────▶│                │                │───────────────▶│
+    │ Final poll       │                │                │                │                │
+    │ {COMPLETED, data}│                │                │                │                │
+    │◀─────────────────│                │                │                │                │
 ```
 
 ---
 
-## ⚙ Configuration Reference
+## ⚙️ Configuration Reference
 
-### API Backend Environment Variables (`.env`)
+### API Backend (`.env`)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `PORT` | No | `3001` | Express server port |
-| `NODE_ENV` | No | `development` | Environment: `development`, `production`, `test` |
-| `DATABASE_URL` | **Yes** | — | PostgreSQL connection string |
-| `REDIS_HOST` | No | `localhost` | Redis server hostname |
-| `REDIS_PORT` | No | `6379` | Redis server port |
-| `REDIS_PASSWORD` | No | *(empty)* | Redis authentication password |
-| `BULLMQ_QUEUE_NAME` | No | `actionpilot:jobs` | BullMQ queue name (must match worker) |
-| `REDIS_HITL_CHANNEL_PREFIX` | No | `actionpilot:hitl:` | Redis Pub/Sub channel prefix |
-| `WEBHOOK_SECRET` | No | `your-webhook-secret-key` | Shared secret for webhook auth |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | — | PostgreSQL connection string |
+| `REDIS_HOST` | `localhost` | Redis server host |
+| `REDIS_PORT` | `6379` | Redis server port |
+| `PORT` | `3001` | API server port |
+| `WEBHOOK_SECRET` | — | Shared secret for worker→API webhooks |
 
-### Agent Worker Environment Variables (`.env`)
+### Agent Worker (`.env`)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `REDIS_HOST` | No | `localhost` | Redis server hostname |
-| `REDIS_PORT` | No | `6379` | Redis server port |
-| `REDIS_PASSWORD` | No | *(empty)* | Redis authentication password |
-| `GEMINI_API_KEY` | **Yes** | — | Google Gemini API key ([Get one here](https://aistudio.google.com/apikey)) |
-| `WEBHOOK_URL` | No | `http://localhost:3001/api/webhooks/logs` | Node.js webhook endpoint |
-| `WEBHOOK_SECRET` | No | `your-webhook-secret-key` | Must match API backend's value |
-| `BULLMQ_QUEUE_NAME` | No | `actionpilot:jobs` | Must match API backend's queue name |
-| `REDIS_HITL_CHANNEL_PREFIX` | No | `actionpilot:hitl:` | Must match API backend's prefix |
-| `HITL_TIMEOUT_SECONDS` | No | `300` | Seconds to wait for human OTP input |
-| `BROWSER_HEADLESS` | No | `true` | Run Chromium in headless mode |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_API_KEY_1` | — | **Required.** Primary Gemini API key |
+| `GEMINI_API_KEY_2`…`5` | — | Optional. Additional keys for failover |
+| `REDIS_HOST` | `localhost` | Redis server host |
+| `REDIS_PORT` | `6379` | Redis server port |
+| `WEBHOOK_URL` | `http://localhost:3001/api/webhooks/logs` | API webhook endpoint |
+| `WEBHOOK_SECRET` | — | Must match API's `WEBHOOK_SECRET` |
+| `BROWSER_HEADLESS` | `true` | Set `false` to see the browser |
+| `HITL_TIMEOUT_SECONDS` | `300` | Max seconds to wait for human OTP |
+| `BULLMQ_QUEUE_NAME` | `actionpilot_jobs` | Redis queue name |
 
-### Shared Configuration Contract
+---
 
-> ⚠️ **Critical:** The following values **must be identical** across both services:
+## 🎨 Frontend — Dashboard UI
 
-| Config Key | Shared Value |
-|-----------|--------------|
-| `BULLMQ_QUEUE_NAME` | `actionpilot:jobs` |
-| `REDIS_HITL_CHANNEL_PREFIX` | `actionpilot:hitl:` |
-| `WEBHOOK_SECRET` | *(your chosen secret)* |
-| Redis host/port | *(same Redis instance)* |
+The frontend is a single-page Next.js 15 app with a premium dark-mode, glassmorphic aesthetic:
+
+| Component | Description |
+|-----------|-------------|
+| **Hero Header** | Gradient title "ActionPilot AI" with animated badge and feature pills |
+| **Command Center** | Textarea with `Enter` to launch, glow-on-focus border effect |
+| **Live Execution Console** | Terminal-style log viewer — macOS dots, timeline dots, auto-scroll, 2s polling |
+| **HITL Modal** | Glowing orange modal with OTP input — auto-triggers when agent pauses |
+| **Mission Result Card** | Rich text rendering, numbered lists, status badges, collapsible raw details |
+
+### Result Card Design
+
+```
+┌─────────────────────────────────────────────────────┐
+│ ✅ Mission Result      [✓ Successful] [⚡ 12 Steps] │
+├─────────────────────────────────────────────────────┤
+│  ┌──┐                                               │
+│  │1 │ Sony WH-1000XM5 — ₹24,990                    │
+│  └──┘                                               │
+│  ┌──┐                                               │
+│  │2 │ Samsung Galaxy Buds Pro — ₹12,990             │
+│  └──┘                                               │
+│  ┌──┐                                               │
+│  │3 │ JBL Tune 770NC — ₹4,999                      │
+│  └──┘                                               │
+├─────────────────────────────────────────────────────┤
+│  ▸ View Raw Details  (errors, extracted_content)     │
+└─────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## 🧩 Design Decisions & Trade-offs
 
-### 1. Why Two Separate Services (Node.js + Python)?
-
 | Decision | Rationale |
 |----------|-----------|
-| **Node.js for API** | Superior async I/O for handling HTTP requests. Rich ecosystem for Express, Prisma, BullMQ. TypeScript provides compile-time safety. |
-| **Python for Agent** | `browser-use` and `langchain` are Python-native. The ML/AI ecosystem (LangChain, Playwright bindings) is strongest in Python. |
-| **Redis as bridge** | BullMQ has first-class support in both Node.js and Python. Redis Pub/Sub provides low-latency, exactly-once delivery for HITL. |
-
-### 2. Why 3 Separate Redis Connections?
-
-```
-Connection 1 (redisConnection) → BullMQ queue operations
-Connection 2 (redisPublisher)  → HITL Pub/Sub PUBLISH
-Connection 3 (redisSubscriber) → HITL Pub/Sub SUBSCRIBE
-```
-
-**Rationale:** Redis Pub/Sub SUBSCRIBE blocks the connection — no other commands can be sent on a subscribed connection. BullMQ also requires its own dedicated connection. Hence, 3 connections are the minimum for correct operation.
-
-### 3. Why Webhooks Instead of Direct DB Access?
-
-| Option | Pros | Cons |
-|--------|------|------|
-| **Webhooks ✅** | Decoupled services; Python doesn't need Prisma/PostgreSQL driver; language-agnostic; API validates all writes | Extra HTTP hop; slight latency |
-| Direct DB access | Lower latency | Tight coupling; duplicated ORM logic; bypasses API validation |
-
-We chose webhooks for **clean service boundaries** — the Python worker is a pure consumer that only needs Redis and HTTP.
-
-### 4. Why BullMQ Over Celery or RabbitMQ?
-
-| Queue System | Why Not |
-|-------------|---------|
-| **Celery** | Python-only; wouldn't integrate with the Node.js API |
-| **RabbitMQ** | Additional infrastructure; BullMQ gives us queue + Pub/Sub on the same Redis instance |
-| **BullMQ ✅** | First-class Node.js + Python SDKs; built on Redis (already needed for Pub/Sub); exponential backoff retries; job lifecycle events |
-
-### 5. Why Gemini 2.0 Flash?
-
-| Feature | Benefit |
-|---------|---------|
-| **Vision capability** | Can see and understand page screenshots — critical for browser-use |
-| **Speed** | "Flash" variant is optimized for low-latency responses (~1-2s per step) |
-| **Cost** | Significantly cheaper than GPT-4 Vision or Claude for high-volume automation |
-| **Context window** | 1M tokens — can handle long browsing sessions with full history |
+| **Decoupled Node.js + Python** | Node.js excels at I/O-heavy API serving; Python is required by `browser-use` and the ML ecosystem. Decoupling lets each scale independently. |
+| **Redis for 3 purposes** | BullMQ queue, HITL Pub/Sub publisher, HITL Pub/Sub subscriber — requires 3 separate connections because `SUBSCRIBE` blocks. Single infrastructure component serves all IPC needs. |
+| **Webhooks (Worker → API)** | Push-based: the worker POSTs logs as they happen. No polling delay. Retry-enabled with exponential backoff. |
+| **Multi-key failover** | Gemini's free tier has low rate limits. Rather than upgrading to paid, 5 free keys give 5× throughput. The pool is transparent to the Agent — it just sees one LLM. |
+| **browser-use native `ChatGoogle`** | Using the library's own LLM wrapper (`browser_use.llm.google.chat.ChatGoogle`) instead of LangChain ensures correct `BaseChatModel` protocol compliance and `ChatInvokeCompletion` return types. |
+| **`register_new_step_callback`** | browser-use v0.13.8 provides this hook — cleaner than monkey-patching `Agent.step()`. |
+| **PostgreSQL + Prisma** | Type-safe queries, auto-generated migrations, relational integrity for Job→AuditLog. JSONB column for flexible `resultData`. |
+| **Next.js API rewrites** | Frontend proxies `/api/*` to `:3001` via `next.config.ts` rewrites — avoids CORS, simplifies deployment. |
 
 ---
 
 ## 🛡 Error Handling Strategy
 
-### API Gateway
-
-| Layer | Mechanism |
-|-------|-----------|
-| **Input Validation** | Zod schemas on every endpoint — rejects malformed requests before they hit business logic |
-| **Controller Layer** | try/catch → `next(err)` pattern delegates to global error handler |
-| **Global Error Handler** | Returns stack traces in development, generic message in production |
-| **Webhook Auth** | `x-webhook-secret` header validation — rejects unauthenticated webhook calls |
-
-### Agent Worker
-
-| Layer | Mechanism |
-|-------|-----------|
-| **Config Validation** | Pydantic Settings rejects missing/invalid env vars at startup |
-| **Webhook Client** | 3× automatic retries with exponential backoff on 502/503/504 |
-| **HITL Timeout** | Configurable timeout (default 300s) → `HITLTimeoutError` → job marked FAILED |
-| **Agent Execution** | try/catch around `agent.run()` → FAILED webhook with stack trace |
-| **Browser Cleanup** | `finally` block ensures `browser.close()` is always called |
-| **Action Logging** | Wrapped in try/catch — logging failures never crash the agent |
-| **BullMQ Retries** | Failed jobs are re-raised so BullMQ can retry (3× with exponential backoff) |
+| Layer | Strategy |
+|-------|----------|
+| **API Input** | Zod schema validation on all request bodies — rejects malformed input before processing |
+| **Job Queue** | BullMQ retries with exponential backoff — failed jobs are retried before marking FAILED |
+| **Agent Runner** | `try/except` with full traceback logging — errors are captured in `resultData.errors` |
+| **Webhook Client** | Retry with backoff (3 attempts) — network failures don't crash the agent |
+| **HITL Timeout** | Configurable timeout (300s default) — prevents indefinite blocking |
+| **Step Logging** | `try/except` in callback — logging failures never crash the agent loop |
+| **Multi-Key** | Rate limit on Key N → automatic rotation to Key N+1 with 1s cooldown |
+| **Browser Cleanup** | `finally` block always closes `BrowserSession` — prevents zombie Chromium processes |
 
 ---
 
 ## 📈 Scaling Considerations
 
-### Current Design (Single Worker)
-
-The current architecture processes **one browser session at a time** (`concurrency: 1`). This is intentional — each Chromium instance consumes ~200-500MB RAM.
-
-### Horizontal Scaling Path
-
-```
-                    ┌─────────────────┐
-                    │   Load Balancer  │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-        ┌──────────┐  ┌──────────┐  ┌──────────┐
-        │ API Pod 1│  │ API Pod 2│  │ API Pod 3│
-        └────┬─────┘  └────┬─────┘  └────┬─────┘
-             │              │              │
-             └──────────────┼──────────────┘
-                            ▼
-                    ┌──────────────┐
-                    │ Redis Cluster│
-                    │ (BullMQ +    │
-                    │  Pub/Sub)    │
-                    └──────┬───────┘
-                           │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ Worker 1 │ │ Worker 2 │ │ Worker 3 │
-        │ (1 browser│ │ (1 browser│ │(1 browser│
-        │  session) │ │  session) │ │ session) │
-        └──────────┘ └──────────┘ └──────────┘
-```
-
-**Key scaling strategies:**
-- **Multiple worker processes** — BullMQ automatically distributes jobs across workers
-- **Redis Cluster** — For Pub/Sub and queue at scale
-- **PostgreSQL connection pooling** — PgBouncer or Prisma Accelerate
-- **Kubernetes** — Each worker pod gets its own Chromium instance
-- **Screenshot storage** — Move to S3/GCS for audit log screenshots
+| Dimension | Current (Dev) | Production Path |
+|-----------|--------------|-----------------|
+| **Workers** | 1 process | N workers consuming same BullMQ queue (horizontal scale) |
+| **API** | Single Express | PM2 cluster mode or Kubernetes deployment |
+| **Database** | Local PostgreSQL | Managed PostgreSQL (RDS, Cloud SQL) with connection pooling |
+| **Redis** | Local Redis | Redis Cluster or managed Redis (ElastiCache, Upstash) |
+| **LLM Keys** | 1-5 free keys | Paid Gemini API with higher rate limits |
+| **Browser** | Local Chromium | Remote browser grid (Browserless, Playwright Grid) |
+| **Frontend** | Local Next.js dev | Vercel deployment with edge functions |
 
 ---
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create your feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'feat: add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'feat: add amazing feature'`
+4. Push: `git push origin feature/amazing-feature`
 5. Open a Pull Request
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -1030,6 +644,6 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 **Built with ❤️ by [Athar Ali](https://github.com/Athar786-Ali)**
 
-*ActionPilot AI — Let the agent browse for you.*
+*ActionPilot AI — Because web automation should be as simple as describing what you want.*
 
 </div>
